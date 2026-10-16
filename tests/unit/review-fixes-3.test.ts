@@ -75,3 +75,54 @@ describe('round 3b (Codex check of the fixes)', () => {
     expect(store.get().placements[1]).toEqual(before)
   })
 })
+
+describe('panel clicks right after typing (found in Chrome during task 15)', () => {
+  it('the first click on a font button after typing is not lost', async () => {
+    const root = document.createElement('div')
+    document.body.replaceChildren(root)
+    const store = createStore(STYLE_PRESETS.crew.make())
+    mountEditor(root, store)
+    ;[...root.querySelectorAll('button')].find((b) => b.textContent === '+ Text')!.click()
+    const panel = root.querySelector('.panel--inspector')!
+    const text = panel.querySelector<HTMLInputElement>('input[aria-label="Text"]')!
+    text.focus()
+    text.value = 'WESLEYAN'
+    text.dispatchEvent(new Event('input'))
+    // A real click: pointerdown on the button, the text box blurs, then pointerup + click.
+    const oswald = [...panel.querySelectorAll<HTMLButtonElement>('.segmented__btn')].find((b) => b.textContent === 'Oswald')!
+    oswald.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }))
+    text.blur()
+    window.dispatchEvent(new MouseEvent('pointerup'))
+    expect(oswald.isConnected).toBe(true) // not replaced before the click
+    oswald.click()
+    expect((store.get().placements[0].content as { font: string }).font).toBe('oswald')
+    await new Promise((r) => setTimeout(r, 0))
+    expect(panel.textContent).toContain('Oswald') // the panel caught up afterwards
+  })
+})
+
+describe('round 4 (Codex review of task 15)', () => {
+  it('a cancelled press does not leave the panel frozen', () => {
+    const root = document.createElement('div')
+    document.body.replaceChildren(root)
+    const store = createStore(STYLE_PRESETS.crew.make())
+    mountEditor(root, store)
+    const panel = root.querySelector('.panel--inspector')!
+    panel.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }))
+    window.dispatchEvent(new MouseEvent('pointercancel'))
+    store.dispatch({ type: 'setHeader', patch: { client: 'After cancel' } })
+    expect(panel.querySelector<HTMLInputElement>('input[placeholder^="e.g."]')!.value).toBe('After cancel')
+  })
+
+  it('Ctrl+E still exports while an inline edit box is open', () => {
+    const root = document.createElement('div')
+    document.body.replaceChildren(root)
+    const store = createStore(STYLE_PRESETS.crew.make())
+    const editor = mountEditor(root, store)
+    let exported = 0
+    editor.setExportHook(() => exported++)
+    root.querySelector('.sheet [data-field="title"]')!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    root.querySelector('.inline-edit')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'e', ctrlKey: true, bubbles: true }))
+    expect(exported).toBe(1)
+  })
+})

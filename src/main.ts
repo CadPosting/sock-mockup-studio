@@ -1,5 +1,6 @@
 import './style.css'
 import { mountEditor } from './editor/shell'
+import { loadEditorFonts } from './io/fonts'
 import { STYLE_PRESETS } from './model/defaults'
 import { createAutosave, loadDraft } from './store/autosave'
 import { idbStorage } from './store/idb'
@@ -8,6 +9,8 @@ import { createStore } from './store/store'
 // Boot: load the autosaved draft (if any) behind the start dialog, then show the dialog so the
 // user picks Resume, a new style, or a file (app-flow "Start dialog").
 async function boot() {
+  // Show the sheet in the same bundled fonts the export uses. Not awaited: the editor opens at once.
+  void loadEditorFonts().catch(() => {})
   let damaged = false
   const draft = await loadDraft(idbStorage, undefined, () => (damaged = true))
   const store = createStore(draft?.mockup ?? STYLE_PRESETS.crew.make())

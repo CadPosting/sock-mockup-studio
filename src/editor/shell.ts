@@ -5,6 +5,7 @@
 
 import { newId } from '../model/defaults'
 import type { Placement, ZoneId } from '../model/types'
+import { copyPng, downloadBlob, exportFileName, exportPng } from '../io/export-png'
 import { checkLogoFile } from '../io/upload'
 import { readImage } from '../util/palette'
 import { render } from '../render/sheet'
@@ -77,6 +78,26 @@ export function mountEditor(root: HTMLElement, store: Store) {
   const addLogoBtn = button('+ Logo', { title: 'Put the client logo on the sock' })
   const addTextBtn = button('+ Text', { title: 'Add a text wordmark to the sock' })
 
+  // Export ▾ (B4: the one filled primary button): PNG download, Copy PNG; PDF comes in task 16.
+  const exportBtn = button('Export ▾', { primary: true, title: 'Export the sheet (Ctrl+E = PNG)' })
+  exportBtn.setAttribute('aria-haspopup', 'menu')
+  exportBtn.setAttribute('aria-expanded', 'false')
+  const exportItem = (label: string, title?: string, disabled = false) =>
+    h('button', { type: 'button', class: 'menu__item', role: 'menuitem', title, disabled }, label)
+  const pngItem = exportItem('Download PNG (2048 × 1536)')
+  const copyItem = exportItem('Copy PNG (paste into an email)')
+  const pdfItem = exportItem('Download PDF', 'Coming in task 16', true)
+  const exportList = h('div', { class: 'menu', role: 'menu', hidden: true }, pngItem, copyItem, pdfItem)
+  const exportMenu = h('div', { class: 'menu-wrap' }, exportBtn, exportList)
+  const setExportOpen = (open: boolean) => {
+    exportList.hidden = !open
+    exportBtn.setAttribute('aria-expanded', String(open))
+  }
+  exportBtn.addEventListener('click', () => setExportOpen(exportList.hidden))
+  document.addEventListener('click', (e) => {
+    if (!exportMenu.contains(e.target as Node)) setExportOpen(false)
+  })
+
   // Buttons for later tasks are shown but disabled, so the layout is final from now on.
   const later = (label: string, task: string) => button(label, { disabled: true, title: `Coming in ${task}` })
 
@@ -87,7 +108,7 @@ export function mountEditor(root: HTMLElement, store: Store) {
     group(undo, redo),
     group(addLogoBtn, addTextBtn, dots, motifBtn),
     h('div', { class: 'topbar__spacer' }),
-    group(button('Export ▾', { primary: true, disabled: true, title: 'Coming in task 15' })),
+    group(exportMenu),
   )
 
   const banner = h('div', { class: 'banner', role: 'status', hidden: true }, 'Draft not autosaved — use Save.')
@@ -187,6 +208,40 @@ export function mountEditor(root: HTMLElement, store: Store) {
     })
   }
   menuBtn.addEventListener('click', () => openMenu())
+
+  // ---------- export (task 15) ----------
+  let exporting = false
+  let exportHook: () => void = () => void runExport('png') // replaceable in tests (jsdom has no canvas)
+  async function runExport(kind: 'png' | 'copy') {
+    if (exporting) return
+    exporting = true
+    setExportOpen(false)
+    exportBtn.disabled = true
+    exportBtn.classList.add('btn--busy') // spinner (B6)
+    const m = store.get()
+    const name = exportFileName(m, 'png')
+    try {
+      if (kind === 'copy') {
+        const png = exportPng(m)
+        if (await copyPng(png)) toast('Copied. Paste it into your email.')
+        else {
+          downloadBlob(await png, name)
+          toast('Your browser blocked copying. Downloading the PNG instead.')
+        }
+      } else {
+        downloadBlob(await exportPng(m), name)
+        toast(`Exported ${name}`)
+      }
+    } catch (err) {
+      toast(`Export failed: ${err instanceof Error ? err.message : 'unknown error'}. Your mockup is safe; try again or Save the file.`, 'error')
+    } finally {
+      exporting = false
+      exportBtn.disabled = false
+      exportBtn.classList.remove('btn--busy')
+    }
+  }
+  pngItem.addEventListener('click', () => void runExport('png'))
+  copyItem.addEventListener('click', () => void runExport('copy'))
 
   // ---------- linked-zone highlight (B5) ----------
   let hoverZone: ZoneId | null = null
@@ -334,6 +389,11 @@ export function mountEditor(root: HTMLElement, store: Store) {
         return
       }
     }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') {
+      e.preventDefault() // Ctrl+E = export PNG (app-flow keyboard table)
+      exportHook()
+      return
+    }
     if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z') return
     // Leave undo inside text fields to the browser, so it undoes typing, not the sheet.
     if (inField) return
@@ -350,5 +410,9 @@ export function mountEditor(root: HTMLElement, store: Store) {
     uploadLogo,
     toast,
     openMenu,
+    runExport,
+    setExportHook(fn: () => void) {
+      exportHook = fn
+    },
   }
 }

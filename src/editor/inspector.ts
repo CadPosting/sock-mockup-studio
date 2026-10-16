@@ -136,7 +136,34 @@ export function createInspector(
     for (const [on, b] of band.buttons) b.setAttribute('aria-checked', String(m.midBand === on))
   }
 
+  // Pressing a panel button while typing blurs the text box, which ends the edit and changes the
+  // state. Rebuilding the panel right then would replace the button under the pointer and the
+  // click would be lost (found in Chrome: the first click on a font after typing did nothing).
+  // So while a pointer is down inside the panel, hold rebuilds until just after the click.
+  let pressing = false
+  let pending = false
+  root.addEventListener('pointerdown', () => (pressing = true), true)
+  const release = () => {
+    if (!pressing) return
+    pressing = false
+    // The click event fires right after pointerup; rebuild once it has been handled.
+    setTimeout(() => {
+      if (pending) {
+        pending = false
+        sync(store.get())
+      }
+    })
+  }
+  window.addEventListener('pointerup', release)
+  // A cancelled press (touch scroll) or leaving the window never sends pointerup: don't stay paused.
+  window.addEventListener('pointercancel', release)
+  window.addEventListener('blur', release)
+
   function sync(m: Mockup) {
+    if (pressing) {
+      pending = true
+      return
+    }
     const sel = selection.get()
     sheet.hidden = sel !== null
     selected.hidden = sel === null
