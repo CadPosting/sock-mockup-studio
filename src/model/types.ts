@@ -16,3 +16,5 @@ export type Motif = NonNullable<Mockup['patterns']['motif']>
 export type Header = Mockup['header']
 export type SpecRow = Header['specs'][number]
 export type Asset = Mockup['assets'][string]
+export type ZoneFill = Mockup['zoneFills'][number]
+export type ZonePattern = ZoneFill['pattern']

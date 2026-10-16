@@ -9,10 +9,10 @@ export const FLAT_WIDTH = 176
 const L = 0
 const R = FLAT_WIDTH
 const TOP = 308 // top of the tube on front/back
-const SOLE_TOP = 340 // sole view starts lower: the heel cap sits above it
-const BOTTOM = 690 // where the toe cap starts
+export const SOLE_TOP = 340 // sole view starts lower: the heel cap sits above it
+export const BOTTOM = 690 // where the toe cap starts
 const CAP_RX = FLAT_WIDTH / 2
-const CAP_RY = 40 // toe and heel caps bulge ~40 units past the tube
+export const CAP_RY = 40 // toe and heel caps bulge ~40 units past the tube
 
 const CUFF_H = 27
 const STRIPE_H = 10

@@ -5,7 +5,7 @@
 
 import type { Mockup, SpecRow } from '../model/types'
 import { hexToCmyk, hexToRgb } from '../util/color'
-import { el } from './views'
+import { el } from './dom'
 
 const FONT = 'Arimo, Arial, Helvetica, sans-serif'
 export const SAMPLE_RED = '#e0432b'
@@ -71,7 +71,7 @@ function logo(m: Mockup): SVGElement | null {
 
 function tag(m: Mockup): SVGElement {
   const t = m.header.tag
-  const g = el('g', { 'data-part': 'tag' })
+  const g = el('g', { 'data-part': 'tag', 'data-field': 'tag' })
   if (t.mode === 'sample') {
     const label = `SAMPLE ${t.n}`
     const w = approxWidth(label, TAG.size) * 1.08 + TAG.padX * 2 // bold runs ~8% wider
@@ -100,7 +100,7 @@ function tag(m: Mockup): SVGElement {
 /** One spec row as a <text> with one <tspan> per wrapped line. */
 function specRow(row: SpecRow, x: number, y: number, cols: 1 | 2): { node: SVGTextElement; lines: number } {
   const L = LAYOUT[cols]
-  const t = el('text', { 'font-family': FONT, 'font-size': L.size, fill: '#000000' })
+  const t = el('text', { 'font-family': FONT, 'font-size': L.size, fill: '#000000', 'data-field': `spec:${row.id}` })
   const indent = cols === 2 ? BULLET_INDENT : 0
   const labelText = row.label ? `${row.label}:` : ''
   const labelW = labelText ? approxWidth(labelText + ' ', L.size) : 0
@@ -192,6 +192,7 @@ export function renderHeader(m: Mockup): SVGGElement {
       y: LAYOUT[h.columns].titleBaseline,
       'font-size': LAYOUT[h.columns].titleSize,
       'font-weight': h.titleBold ? 700 : 400,
+      'data-field': 'title',
     }),
     specs(m),
   )

@@ -1,6 +1,9 @@
 import type { Mockup } from '../model/types'
 import { renderHeader } from './header'
-import { el, renderView } from './views'
+import { motif, patternDefs } from './patterns'
+import { renderPlacements } from './placements'
+import { el } from './dom'
+import { renderView } from './views'
 
 export const SHEET = { width: 1024, height: 768 } // same as the Keynote slide, so PNG measurements carry over 1:1
 const PAGE_COLORS = { white: '#ffffff', grey: '#ebebeb' } as const // design brief A2
@@ -12,7 +15,7 @@ const LABEL_X = [118, 354, 595, 855] as const
 
 /**
  * Pure: the same mockup always gives the same SVG. The editor never edits this output;
- * it changes state and calls render() again. Placements and patterns come in later tasks.
+ * it changes state and calls render() again.
  */
 export function render(m: Mockup): SVGSVGElement {
   const svg = el('svg', {
@@ -21,11 +24,12 @@ export function render(m: Mockup): SVGSVGElement {
     width: SHEET.width,
     height: SHEET.height,
   })
-  svg.append(el('rect', { width: SHEET.width, height: SHEET.height, fill: PAGE_COLORS[m.pageColor] }), renderHeader(m))
+  svg.append(el('rect', { width: SHEET.width, height: SHEET.height, fill: PAGE_COLORS[m.pageColor] }), patternDefs(m), renderHeader(m))
 
   m.views.forEach((view, i) => {
     const label = el('text', {
       'data-part': 'label',
+      'data-field': `label:${i}`,
       x: LABEL_X[i],
       y: LABEL_Y[m.template],
       'text-anchor': 'middle',
@@ -34,7 +38,13 @@ export function render(m: Mockup): SVGSVGElement {
       fill: '#000000',
     })
     label.textContent = view.label // textContent, never innerHTML: labels are user text
-    svg.append(label, renderView(m, i))
+    // Paint order per view: sock, clipped logos, outline, unclipped logos (which may overlap it).
+    const drawn = renderView(m, i)
+    const { clipped, free } = renderPlacements(m, i, drawn.placementClipId)
+    const scattered = motif(m, i)
+    if (scattered) clipped.prepend(scattered) // under the individual logos
+    drawn.g.append(clipped, drawn.outline, free)
+    svg.append(label, drawn.g)
   })
   return svg
 }

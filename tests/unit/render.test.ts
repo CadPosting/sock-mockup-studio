@@ -46,7 +46,9 @@ describe('render', () => {
     const m = STYLE_PRESETS.crew.make()
     m.views[3].label = '<img src=x onerror=alert(1)>'
     const svg = render(m)
-    expect(svg.querySelector('[data-view="3"]')!.getAttribute('transform')).toContain('scale(-1 1)')
+    // Only the sock drawing flips, not the whole view (so placements on it aren't mirrored).
+    expect(svg.querySelector('[data-view="3"]')!.getAttribute('transform')).not.toContain('scale')
+    expect(svg.querySelector('[data-view="3"] [data-part="sock"]')!.getAttribute('transform')).toContain('scale(-1 1)')
     expect(svg.querySelector('img')).toBeNull()
     expect(svg.querySelectorAll('[data-part="label"]')[3].textContent).toBe('<img src=x onerror=alert(1)>')
   })

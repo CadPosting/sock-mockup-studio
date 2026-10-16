@@ -63,6 +63,36 @@ const motifSchema = z.object({
   spacing: z.number().min(10).max(300),
 })
 
+// Pattern fill for a zone. The zone's own colour is the base; these colours go on top.
+export const PATTERN_TYPES = ['stripes', 'checks', 'dots', 'chevrons', 'camo', 'argyle'] as const
+const zonePatternSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('stripes'),
+    color: colorRefSchema,
+    width: z.number().min(2).max(80),
+    gap: z.number().min(2).max(80),
+    angle: z.number().min(-90).max(90), // 0 = horizontal bands
+  }),
+  z.object({ type: z.literal('checks'), color: colorRefSchema, size: z.number().min(4).max(80) }),
+  z.object({
+    type: z.literal('dots'),
+    color: colorRefSchema,
+    size: z.number().min(1).max(30),
+    spacing: z.number().min(4).max(60),
+    style: z.enum(['solid', 'outline']),
+  }),
+  z.object({ type: z.literal('chevrons'), color: colorRefSchema, size: z.number().min(6).max(80) }),
+  z.object({ type: z.literal('camo'), colors: z.array(colorRefSchema).min(1).max(3), size: z.number().min(20).max(200) }),
+  z.object({
+    type: z.literal('argyle'),
+    color: colorRefSchema, // diamond colour (alternates with the zone colour)
+    line: colorRefSchema, // thin diagonal overcheck lines
+    size: z.number().min(10).max(150), // diamond width
+  }),
+])
+
+const zoneFillSchema = z.object({ zone: z.enum(ZONE_IDS), pattern: zonePatternSchema })
+
 // Only the three image types we accept on upload, and only as base64 data URLs.
 const assetSchema = z
   .object({
@@ -124,6 +154,11 @@ export const mockupSchema = z.object({
   midBand: z.boolean(),
   placements: z.array(placementSchema).max(100),
   patterns: z.object({ gripDots: gripDotsSchema.nullable(), motif: motifSchema.nullable() }),
+  // At most one pattern per zone; zones without an entry are flat colour.
+  zoneFills: z
+    .array(zoneFillSchema)
+    .max(ZONE_IDS.length)
+    .refine((fills) => new Set(fills.map((f) => f.zone)).size === fills.length, 'one pattern per zone'),
   header: headerSchema,
   assets: z.record(z.string().max(64), assetSchema),
 })

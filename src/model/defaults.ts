@@ -70,6 +70,7 @@ function base(template: TemplateId, views: ViewPresetId, header: Header): Mockup
     midBand: false,
     placements: [],
     patterns: { gripDots: null, motif: null },
+    zoneFills: [],
     header,
     assets: {},
   }
