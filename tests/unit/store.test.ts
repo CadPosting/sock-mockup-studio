@@ -217,4 +217,15 @@ describe('autosave', () => {
     await loadDraft(storage, 100, () => told++)
     expect(told).toBe(1) // no draft at all is not an error
   })
+
+  it('an SVG logo in a restored draft gets the same cleaning as an upload (Codex, task 20)', async () => {
+    const storage = memory()
+    const m = start()
+    const evil = btoa('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script><rect width="5" height="5"/></svg>')
+    m.assets.e = { name: 'e.svg', mime: 'image/svg+xml', dataUrl: `data:image/svg+xml;base64,${evil}` }
+    m.header.logoAssetId = 'e'
+    storage.data.set('draft', { mockup: m, savedAt: 1 })
+    const draft = await loadDraft(storage, 100)
+    expect(atob(draft!.mockup.assets.e.dataUrl.split(',')[1])).not.toContain('script')
+  })
 })

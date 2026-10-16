@@ -2,6 +2,7 @@
 // so tests use an in-memory fake and the app uses idb-keyval (localStorage caps out around
 // 5 MB, and one embedded logo can blow that).
 
+import { cleanSvgAssets } from '../io/clean'
 import { migrate } from '../model/schema'
 import type { Mockup } from '../model/types'
 
@@ -65,7 +66,8 @@ export async function loadDraft(
       onDamaged()
       return null
     }
-    return { mockup: migrate(raw.mockup), savedAt: raw.savedAt }
+    // Same pipeline as opening a file: validate, then clean any SVG logos.
+    return { mockup: cleanSvgAssets(migrate(raw.mockup)), savedAt: raw.savedAt }
   } catch {
     // A draft was there but didn't validate: tell the user rather than silently starting blank.
     onDamaged()

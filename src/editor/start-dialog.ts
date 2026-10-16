@@ -3,6 +3,7 @@
 // works the same in every browser (no <dialog> quirks) and needs no confirm() popups.
 
 import { STYLE_PRESETS, type StylePresetId } from '../model/defaults'
+import { cleanSvgAssets } from '../io/clean'
 import { migrate, MockupFileError } from '../model/schema'
 import type { Mockup } from '../model/types'
 import { render } from '../render/sheet'
@@ -39,7 +40,7 @@ export async function readMockupFile(
 ): Promise<{ ok: true; mockup: Mockup } | { ok: false; message: string }> {
   if (file.size > MAX_FILE_BYTES) return { ok: false, message: OPEN_ERRORS.tooBig }
   try {
-    const mockup = migrate(JSON.parse(await file.text()))
+    const mockup = cleanSvgAssets(migrate(JSON.parse(await file.text())))
     // A file whose logo bytes are broken would open with a missing logo; refuse it whole instead.
     if (!(await verifyImages(mockup))) return { ok: false, message: OPEN_ERRORS.damaged }
     return { ok: true, mockup }

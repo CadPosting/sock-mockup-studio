@@ -24,6 +24,7 @@ function watchErrors(page: Page): string[] {
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text()))
   page.on('pageerror', (e) => errors.push(e.message))
   page.on('response', (r) => r.status() >= 400 && errors.push(`${r.status()} ${r.url()}`))
+  page.on('requestfailed', (r) => errors.push(`requestfailed: ${r.url()} ${r.failure()?.errorText}`))
   return errors
 }
 
