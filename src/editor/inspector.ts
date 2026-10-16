@@ -8,6 +8,7 @@ import { VIEW_PRESETS, type ViewPresetId } from '../model/defaults'
 import type { Mockup } from '../model/types'
 import type { Store } from '../store/store'
 import { h } from './dom'
+import { headerPanel } from './header-panel'
 import { gripPanel, motifPanel, placementPanel, zonePanel } from './panels'
 import type { SelectionStore } from './selection'
 
@@ -84,6 +85,9 @@ export function createInspector(store: Store, selection: SelectionStore, pickLog
   const stripes = segButtons<0 | 1 | 2>('Cuff stripes', [[0, 'None'], [1, '1'], [2, '2']], (n) => store.dispatch({ type: 'setStripes', stripes: n }))
   const band = segButtons<boolean>('Mid band', [[false, 'Off'], [true, 'On']], (on) => store.dispatch({ type: 'setMidBand', on }))
 
+  const editHeader = h('button', { type: 'button', class: 'btn btn--outline' }, 'Edit title, tag & specs')
+  editHeader.addEventListener('click', () => selection.set({ kind: 'header' }))
+
   const sheet = h(
     'div',
     { class: 'panel-section' },
@@ -91,6 +95,7 @@ export function createInspector(store: Store, selection: SelectionStore, pickLog
     h('h2', { class: 'inspector__title' }, 'Sheet'),
     field('Client', client),
     field('Logo', logoField),
+    field('Header', editHeader),
     field('Sock template', template),
     field('Views', views),
     field('Cuff stripes', stripes.g),
@@ -119,15 +124,20 @@ export function createInspector(store: Store, selection: SelectionStore, pickLog
     sheet.hidden = sel !== null
     selected.hidden = sel === null
     if (!sel) return syncSheet(m)
-    // Rebuild the selection panel from state, except while the user is editing inside it
-    // (rebuilding would drop their cursor or the slider they're dragging).
-    if (selected.contains(document.activeElement) && selected.dataset.for === JSON.stringify(sel)) return
+    // Rebuild the selection panel from state, except while the user is mid-edit in a text,
+    // number, slider or colour input (rebuilding would drop their cursor or the drag). Buttons and
+    // menus keep focus after a click too, but those must rebuild, or "+ Add row" shows nothing.
+    const active = document.activeElement
+    const midEdit = active instanceof HTMLElement && selected.contains(active) && active.matches('input:not([type="checkbox"]), textarea')
+    if (midEdit && selected.dataset.for === JSON.stringify(sel)) return
     selected.dataset.for = JSON.stringify(sel)
     selected.replaceChildren(
       sel.kind === 'zone'
         ? zonePanel(store, sel.zone)
         : sel.kind === 'placement'
           ? placementPanel(store, selection, sel.id)
+          : sel.kind === 'header'
+            ? headerPanel(store)
           : sel.kind === 'gripDots'
             ? gripPanel(store, selection)
             : motifPanel(store, selection),

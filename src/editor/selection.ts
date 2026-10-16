@@ -6,6 +6,7 @@ import type { ZoneId } from '../model/types'
 export type Selection =
   | { kind: 'zone'; zone: ZoneId }
   | { kind: 'placement'; id: string }
+  | { kind: 'header' }
   | { kind: 'gripDots' }
   | { kind: 'motif' }
   | null

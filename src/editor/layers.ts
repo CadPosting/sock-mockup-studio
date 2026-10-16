@@ -67,10 +67,12 @@ export function renderLayers(m: Mockup, selected: string | null): HTMLElement {
     m.patterns.motif ? row('Repeat motif', undefined, undefined, 'motif') : null,
   ].filter((n): n is HTMLLIElement => n !== null)
 
-  for (const r of [...zones, ...logos, ...texts, ...patterns]) if (r.dataset.select === selected) r.classList.add('layers__row--selected')
+  const header = row('Header & specs', undefined, undefined, 'header')
+  for (const r of [header, ...zones, ...logos, ...texts, ...patterns]) if (r.dataset.select === selected) r.classList.add('layers__row--selected')
   return h(
     'div',
     { class: 'layers' },
+    h('section', { class: 'layers__section' }, h('ul', { class: 'layers__list' }, header)),
     section('Zones', zones, ''),
     section('Logos', logos, 'No logos yet'),
     section('Text', texts, 'No text yet'),

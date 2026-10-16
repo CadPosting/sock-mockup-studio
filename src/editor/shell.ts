@@ -40,7 +40,7 @@ const selectKey = (s: Selection) =>
 function parseSelectKey(key: string): Selection {
   if (key.startsWith('zone:')) return { kind: 'zone', zone: key.slice(5) as ZoneId }
   if (key.startsWith('placement:')) return { kind: 'placement', id: key.slice(10) }
-  if (key === 'gripDots' || key === 'motif') return { kind: key }
+  if (key === 'gripDots' || key === 'motif' || key === 'header') return { kind: key }
   return null
 }
 
@@ -198,6 +198,7 @@ export function mountEditor(root: HTMLElement, store: Store) {
   svgHolder.addEventListener('click', (e) => {
     // The re-render during a drag means the click lands on an ancestor, not the logo; ignore it.
     if (pressedPlacement) return
+    if ((e.target as Element).closest?.('[data-part="header"]')) return selection.set({ kind: 'header' })
     const z = zoneOf(e)
     selection.set(z ? { kind: 'zone', zone: z } : null) // clicking empty sheet deselects
   })
