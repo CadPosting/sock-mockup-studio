@@ -40,7 +40,9 @@ export function toSheet(el: Element, clientX: number, clientY: number): { x: num
 /** Default spot for a new placement: the middle of the view's sock (leg on flat views). */
 export function viewCentre(m: Mockup, view: number): { x: number; y: number } {
   const kind = m.views[view].kind
-  return kind === 'left' || kind === 'right' ? { x: 160, y: 140 } : { x: 88, y: 460 }
+  if (kind !== 'left' && kind !== 'right') return { x: 88, y: 460 }
+  // Middle of the leg (crew) or of the sock body (ankle), measured on the traced Left profiles.
+  return m.template === 'crew' ? { x: 193, y: 140 } : { x: 150, y: 230 }
 }
 
 export const angleDeg = (cx: number, cy: number, x: number, y: number) => (Math.atan2(y - cy, x - cx) * 180) / Math.PI

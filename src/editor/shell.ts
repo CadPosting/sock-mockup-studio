@@ -86,7 +86,7 @@ export function mountEditor(root: HTMLElement, store: Store) {
     h('button', { type: 'button', class: 'menu__item', role: 'menuitem', title, disabled }, label)
   const pngItem = exportItem('Download PNG (2048 × 1536)')
   const copyItem = exportItem('Copy PNG (paste into an email)')
-  const pdfItem = exportItem('Download PDF', 'Coming in task 16', true)
+  const pdfItem = exportItem('Download PDF (vector, for the factory)')
   const exportList = h('div', { class: 'menu', role: 'menu', hidden: true }, pngItem, copyItem, pdfItem)
   const exportMenu = h('div', { class: 'menu-wrap' }, exportBtn, exportList)
   const setExportOpen = (open: boolean) => {
@@ -212,7 +212,7 @@ export function mountEditor(root: HTMLElement, store: Store) {
   // ---------- export (task 15) ----------
   let exporting = false
   let exportHook: () => void = () => void runExport('png') // replaceable in tests (jsdom has no canvas)
-  async function runExport(kind: 'png' | 'copy') {
+  async function runExport(kind: 'png' | 'copy' | 'pdf') {
     if (exporting) return
     exporting = true
     setExportOpen(false)
@@ -221,7 +221,13 @@ export function mountEditor(root: HTMLElement, store: Store) {
     const m = store.get()
     const name = exportFileName(m, 'png')
     try {
-      if (kind === 'copy') {
+      if (kind === 'pdf') {
+        // Loaded on first use only: jsPDF + svg2pdf are most of the bundle (TDD §9).
+        const { exportPdf } = await import('../io/export-pdf')
+        const pdfName = exportFileName(m, 'pdf')
+        downloadBlob(await exportPdf(m), pdfName)
+        toast(`Exported ${pdfName}`)
+      } else if (kind === 'copy') {
         const png = exportPng(m)
         if (await copyPng(png)) toast('Copied. Paste it into your email.')
         else {
@@ -242,6 +248,7 @@ export function mountEditor(root: HTMLElement, store: Store) {
   }
   pngItem.addEventListener('click', () => void runExport('png'))
   copyItem.addEventListener('click', () => void runExport('copy'))
+  pdfItem.addEventListener('click', () => void runExport('pdf'))
 
   // ---------- linked-zone highlight (B5) ----------
   let hoverZone: ZoneId | null = null
@@ -268,6 +275,16 @@ export function mountEditor(root: HTMLElement, store: Store) {
   })
   // Pressing on a logo selects it and starts a move straight away (no separate click needed).
   let pressedPlacement = false
+  // What the pointer went down on, read while that element still exists. Pressing the sheet can
+  // blur a text field, which ends its edit and redraws the sheet before the click arrives; the
+  // click then lands on the sheet holder and would read as "empty space" (found in Chrome).
+  type Hit = { field: string | null; header: boolean; zone: ZoneId | null }
+  const hitOf = (el: Element): Hit => ({
+    field: el.closest?.('[data-field]')?.getAttribute('data-field') ?? null,
+    header: Boolean(el.closest?.('[data-part="header"]')),
+    zone: (el.closest?.('[data-zone]')?.getAttribute('data-zone') as ZoneId | undefined) ?? null,
+  })
+  let pressed: Hit | null = null
   // Double-press detection is done here, not with the dblclick event: the first press can
   // re-render the sheet, and then the browser no longer sees two clicks on the same element.
   let lastPress = { id: '', at: 0 }
@@ -278,6 +295,7 @@ export function mountEditor(root: HTMLElement, store: Store) {
     if (view !== null && view !== undefined) lastView = Number(view)
     const id = target.closest('[data-placement]')?.getAttribute('data-placement')
     pressedPlacement = Boolean(id)
+    pressed = hitOf(target)
     if (!id || e.button !== 0) return
     e.preventDefault()
     const double = lastPress.id === id && e.timeStamp - lastPress.at < DOUBLE_PRESS_MS
@@ -291,25 +309,37 @@ export function mountEditor(root: HTMLElement, store: Store) {
     }
     overlay.startDrag('move', id, e)
   })
+  // Handled on pointerup, not click: if the press redrew the sheet, Chrome fires no click at all
+  // (the press and release targets no longer share a parent in the page). `click` remains as a
+  // fallback for clicks that don't come with pointer events; `handledUp` stops a double handling.
+  let handledUp = false
+  svgHolder.addEventListener('pointerup', (e) => {
+    if (e.button !== 0 || !pressed) return
+    handledUp = true
+    setTimeout(() => (handledUp = false))
+    activate(e)
+  })
   svgHolder.addEventListener('click', (e) => {
+    if (handledUp) return
+    activate(e)
+  })
+  function activate(e: Event) {
     // The re-render during a drag means the click lands on an ancestor, not the logo; ignore it.
     if (pressedPlacement) return
-    const target = e.target as Element
+    const hit = pressed ?? hitOf(e.target as Element)
+    pressed = null
     // Click any header text or view label to type over it in place (task 13b).
-    const text = target.closest?.('[data-field]')
-    if (text && !text.getAttribute('data-field')!.startsWith('placement:')) {
-      const key = text.getAttribute('data-field')!
+    if (hit.field && !hit.field.startsWith('placement:')) {
       // Selecting the header re-renders the sheet; measure the field's new element, not the
       // removed one (which would put the edit box in the wrong place).
-      if (text.closest('[data-part="header"]')) selection.set({ kind: 'header' })
-      const live = [...sheet.querySelectorAll('[data-field]')].find((n) => n.getAttribute('data-field') === key)
+      if (hit.header) selection.set({ kind: 'header' })
+      const live = [...sheet.querySelectorAll('[data-field]')].find((n) => n.getAttribute('data-field') === hit.field)
       if (live) startInlineEdit(store, sheet, live)
       return
     }
-    if (target.closest?.('[data-part="header"]')) return selection.set({ kind: 'header' })
-    const z = zoneOf(e)
-    selection.set(z ? { kind: 'zone', zone: z } : null) // clicking empty sheet deselects
-  })
+    if (hit.header) return selection.set({ kind: 'header' })
+    selection.set(hit.zone ? { kind: 'zone', zone: hit.zone } : null) // clicking empty sheet deselects
+  }
   stage.addEventListener('click', (e) => {
     if (e.target === stage) selection.set(null) // the grey surround deselects too
   })

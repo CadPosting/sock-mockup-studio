@@ -27,11 +27,17 @@ describe('header', () => {
     expect(specTexts(renderHeader(m)).join()).not.toContain('Yarn composition')
   })
 
-  it('labels are underlined, values are not', () => {
-    const g = renderHeader(STYLE_PRESETS['crew-grip'].make())
-    const underlined = [...g.querySelectorAll('[text-decoration="underline"]')].map((t) => t.textContent)
-    expect(underlined).toContain('Yarn composition')
-    expect(underlined).not.toContain('S/M/L (M for sample)')
+  it('labels are underlined with a real line (svg2pdf drops text-decoration); values are not', () => {
+    const m = STYLE_PRESETS['crew-grip'].make() // 8 labelled rows
+    const g = renderHeader(m)
+    const lines = [...g.querySelectorAll('[data-part="specs"] > line')]
+    expect(lines).toHaveLength(8)
+    expect(g.querySelector('[text-decoration]')).toBeNull()
+    const label = g.querySelector(`[data-field="spec-label:${m.header.specs[0].id}"]`)!
+    expect(label.textContent).toBe('Yarn composition')
+    expect(lines[0].getAttribute('x1')).toBe(label.getAttribute('x'))
+    // 1-column specs without labels (DWU style) get no underline at all.
+    expect(renderHeader(STYLE_PRESETS.crew.make()).querySelectorAll('[data-part="specs"] > line')).toHaveLength(0)
   })
 
   it('wraps long 2-column values the way PYC does', () => {

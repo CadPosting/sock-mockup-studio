@@ -11,6 +11,11 @@ const FONT = 'Arimo, Arial, Helvetica, sans-serif'
 export const SAMPLE_RED = '#e0432b'
 
 const LOGO_BOX = { x: 24, y: 28, width: 336, height: 97 }
+/**
+ * The logo box ends before the title. The brief's box (x 24-360) is right for 1 column (title at
+ * x 400) but overlaps the 2-column title at x 340, so there it stops at x 324.
+ */
+const logoBox = (m: Mockup) => (m.header.columns === 2 ? { ...LOGO_BOX, width: 300 } : LOGO_BOX)
 // PYC/REWD: 117x33 box at 92,171, bold 21 text. Under a short, wide logo (DWU) Peter moves it
 // up to y 117; tagY() decides from the logo's shape.
 const TAG = { x: 92, y: 171, highY: 117, padX: 6, height: 33, baseline: 25, size: 21 }
@@ -20,7 +25,8 @@ const SHORT_LOGO = 60 // drawn height below which the logo counts as "short"
 export function tagY(m: Mockup): number {
   const a = m.header.logoAssetId ? m.assets[m.header.logoAssetId] : undefined
   if (!a?.width || !a.height) return TAG.y
-  const drawn = Math.min(LOGO_BOX.height, (LOGO_BOX.width * a.height) / a.width) // "contain" fit
+  const box = logoBox(m)
+  const drawn = Math.min(box.height, (box.width * a.height) / a.width) // "contain" fit
   return drawn < SHORT_LOGO ? TAG.highY : TAG.y
 }
 
@@ -49,6 +55,27 @@ export function approxWidth(s: string, size: number): number {
   return w * size
 }
 
+let measureCtx: CanvasRenderingContext2D | null | undefined
+
+/**
+ * Width of a string in Arimo. In a browser with Arimo loaded this is the real measured width;
+ * elsewhere (tests, or before the font has loaded) it falls back to approxWidth. Used for the
+ * label underlines and 2-column wrapping, where a few units off would show.
+ */
+export function textWidth(s: string, size: number, weight = 400): number {
+  if (measureCtx === undefined) {
+    try {
+      measureCtx = typeof document !== 'undefined' ? document.createElement('canvas').getContext('2d') : null
+    } catch {
+      measureCtx = null // jsdom: no canvas
+    }
+  }
+  const font = `${weight} ${size}px Arimo`
+  if (!measureCtx || typeof document === 'undefined' || !document.fonts?.check(font)) return approxWidth(s, size)
+  measureCtx.font = font
+  return measureCtx.measureText(s).width
+}
+
 /** Greedy word wrap. The first line is shorter by `firstOffset` (the bold/underlined label). */
 export function wrap(s: string, width: number, size: number, firstOffset = 0): string[] {
   const lines: string[] = []
@@ -56,7 +83,7 @@ export function wrap(s: string, width: number, size: number, firstOffset = 0): s
   let limit = width - firstOffset
   for (const word of s.split(/\s+/).filter(Boolean)) {
     const next = line ? `${line} ${word}` : word
-    if (line && approxWidth(next, size) > limit) {
+    if (line && textWidth(next, size) > limit) {
       lines.push(line)
       line = word
       limit = width
@@ -73,7 +100,7 @@ function logo(m: Mockup): SVGElement | null {
   // SVGs loaded this way (TDD §8).
   return el('image', {
     href: asset.dataUrl,
-    ...LOGO_BOX,
+    ...logoBox(m),
     preserveAspectRatio: 'xMinYMid meet',
   })
 }
@@ -109,12 +136,12 @@ function tag(m: Mockup): SVGElement {
 }
 
 /** One spec row as a <text> with one <tspan> per wrapped line. */
-function specRow(row: SpecRow, x: number, y: number, cols: 1 | 2): { node: SVGTextElement; lines: number } {
+function specRow(row: SpecRow, x: number, y: number, cols: 1 | 2): { node: SVGTextElement; lines: number; underline?: SVGLineElement } {
   const L = LAYOUT[cols]
   const t = el('text', { 'font-family': FONT, 'font-size': L.size, fill: '#000000', 'data-field': `spec:${row.id}` })
   const indent = cols === 2 ? BULLET_INDENT : 0
   const labelText = row.label ? `${row.label}:` : ''
-  const labelW = labelText ? approxWidth(labelText + ' ', L.size) : 0
+  const labelW = labelText ? textWidth(labelText + ' ', L.size) : 0
   const lines = wrap(row.value, L.wrapWidth - indent, L.size, labelW)
 
   if (cols === 2) {
@@ -125,7 +152,7 @@ function specRow(row: SpecRow, x: number, y: number, cols: 1 | 2): { node: SVGTe
   lines.forEach((line, i) => {
     const lineY = y + i * L.lineHeight
     if (i === 0 && labelText) {
-      const label = el('tspan', { x: x + indent, y: lineY, 'text-decoration': 'underline', 'data-field': `spec-label:${row.id}` })
+      const label = el('tspan', { x: x + indent, y: lineY, 'data-field': `spec-label:${row.id}` })
       label.textContent = row.label
       const colon = el('tspan', {})
       colon.textContent = ': ' // colon and space aren't underlined, as on Peter's sheets
@@ -139,7 +166,20 @@ function specRow(row: SpecRow, x: number, y: number, cols: 1 | 2): { node: SVGTe
       t.append(value)
     }
   })
-  return { node: t, lines: lines.length }
+  // The label underline is a real line, not text-decoration: svg2pdf ignores text-decoration,
+  // so the PDF would lose it (and the PNG and PDF must match).
+  const underline = labelText
+    ? el('line', {
+        x1: x + indent,
+        x2: x + indent + textWidth(row.label, L.size),
+        y1: y + L.size * 0.13,
+        y2: y + L.size * 0.13,
+        stroke: '#000000',
+        'stroke-width': L.size * 0.06,
+        'pointer-events': 'none',
+      })
+    : undefined
+  return { node: t, lines: lines.length, underline }
 }
 
 function specs(m: Mockup): SVGElement {
@@ -153,8 +193,9 @@ function specs(m: Mockup): SVGElement {
   groups.forEach((group, c) => {
     let y = L.firstBaseline
     for (const row of group) {
-      const { node, lines } = specRow(row, L.cols[c], y, columns)
+      const { node, lines, underline } = specRow(row, L.cols[c], y, columns)
       g.append(node)
+      if (underline) g.append(underline)
       y += lines * L.lineHeight
     }
   })

@@ -126,3 +126,40 @@ describe('round 4 (Codex review of task 15)', () => {
     expect(exported).toBe(1)
   })
 })
+
+describe('sheet clicks right after typing (found in Chrome during task 16)', () => {
+  it('the first click on a sock part after typing selects it, even though the sheet redraws mid-click', () => {
+    const root = document.createElement('div')
+    document.body.replaceChildren(root)
+    const store = createStore(STYLE_PRESETS.crew.make())
+    mountEditor(root, store)
+    const client = root.querySelector<HTMLInputElement>('.panel--inspector input[placeholder^="e.g."]')!
+    client.focus()
+    client.value = 'Mount Allison'
+    client.dispatchEvent(new Event('input'))
+    const cuff = root.querySelector('.sheet [data-view="0"] [data-zone="cuff"]')!
+    cuff.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }))
+    client.blur() // ends the typing gesture -> the sheet redraws, the cuff element is replaced
+    expect(cuff.isConnected).toBe(false)
+    // The browser then fires click on what's left under the pointer (the sheet holder).
+    root.querySelector('.sheet__svg')!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    expect(root.querySelector('.inspector > div:not([hidden]) .inspector__title')!.textContent).toBe('Cuff')
+  })
+})
+
+describe('sheet press when the browser sends no click (Chrome after a mid-press redraw)', () => {
+  it('pointerdown + pointerup alone select the zone', () => {
+    const root = document.createElement('div')
+    document.body.replaceChildren(root)
+    const store = createStore(STYLE_PRESETS.crew.make())
+    mountEditor(root, store)
+    const client = root.querySelector<HTMLInputElement>('.panel--inspector input[placeholder^="e.g."]')!
+    client.focus()
+    client.value = 'X'
+    client.dispatchEvent(new Event('input'))
+    root.querySelector('.sheet [data-view="1"] [data-zone="heel"]')!.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }))
+    client.blur()
+    root.querySelector('.sheet [data-view="1"] [data-zone="heel"]')!.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }))
+    expect(root.querySelector('.inspector > div:not([hidden]) .inspector__title')!.textContent).toBe('Heel')
+  })
+})
