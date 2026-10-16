@@ -43,6 +43,7 @@ export function createInspector(
   store: Store,
   selection: SelectionStore,
   pickLogo: () => void,
+  signal: AbortSignal,
   onStyleApplied: (name: string) => void = () => {},
 ) {
   const logoName = h('span', { class: 'logo-field__name' })
@@ -154,10 +155,10 @@ export function createInspector(
       }
     })
   }
-  window.addEventListener('pointerup', release)
+  window.addEventListener('pointerup', release, { signal })
   // A cancelled press (touch scroll) or leaving the window never sends pointerup: don't stay paused.
-  window.addEventListener('pointercancel', release)
-  window.addEventListener('blur', release)
+  window.addEventListener('pointercancel', release, { signal })
+  window.addEventListener('blur', release, { signal })
 
   function sync(m: Mockup) {
     if (pressing) {

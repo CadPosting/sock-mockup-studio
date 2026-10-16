@@ -24,7 +24,8 @@ const svgEl = <K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<strin
 
 type Op = 'move' | 'scale' | 'rotate'
 
-export function createOverlay(store: Store, selection: SelectionStore) {
+export function createOverlay(store: Store, selection: SelectionStore, signal?: AbortSignal) {
+  let cancelCurrent: (() => void) | null = null
   const svg = svgEl('svg', { class: 'overlay', viewBox: `0 0 ${SHEET.width} ${SHEET.height}`, 'aria-hidden': 'true' })
 
   function draw() {
@@ -87,15 +88,21 @@ export function createOverlay(store: Store, selection: SelectionStore) {
         store.dispatch({ type: 'updatePlacement', id, patch: { rotation: r } })
       }
     }
-    const onUp = () => {
+    const stop = () => {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
       window.removeEventListener('pointercancel', onUp)
+      cancelCurrent = null
+    }
+    const onUp = () => {
+      stop()
       store.endGesture()
     }
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp)
-    window.addEventListener('pointercancel', onUp)
+    // Opening another file (or unmounting) mid-drag ends the drag where it is.
+    cancelCurrent = onUp
+    window.addEventListener('pointermove', onMove, { signal })
+    window.addEventListener('pointerup', onUp, { signal })
+    window.addEventListener('pointercancel', onUp, { signal })
   }
 
   svg.addEventListener('pointerdown', (e) => {
@@ -107,5 +114,5 @@ export function createOverlay(store: Store, selection: SelectionStore) {
     startDrag(op, sel.id, e)
   })
 
-  return { svg, draw, startDrag }
+  return { svg, draw, startDrag, cancelDrag: () => cancelCurrent?.() }
 }

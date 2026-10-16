@@ -138,13 +138,14 @@ export function startInlineEdit(store: Store, sheet: HTMLElement, target: Elemen
     input.style.width = `${Math.max(minWidth, input.scrollWidth + 12)}px`
   }
   input.addEventListener('input', () => {
+    if (finished) return // a closed box must never write into whatever document is open now
     writeField(store, field, input.value)
     grow()
   })
   input.addEventListener('keydown', (e) => {
     // Arrows/Delete inside the box edit text, not the selected logo. App shortcuts like Ctrl+E
     // (export) still go through: typing has already updated the store.
-    const appShortcut = (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e'
+    const appShortcut = (e.ctrlKey || e.metaKey) && ['e', 's'].includes(e.key.toLowerCase())
     if (!appShortcut) e.stopPropagation()
     if (e.key === 'Enter') finish(true)
     if (e.key === 'Escape') finish(false)

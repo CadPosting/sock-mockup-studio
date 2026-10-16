@@ -14,6 +14,7 @@ export type Action =
   | { type: 'setMidBand'; on: boolean }
   | { type: 'setTemplate'; template: Mockup['template'] }
   | { type: 'applyStyle'; style: Mockup }
+  | { type: 'replaceAll'; mockup: Mockup }
   | { type: 'setViews'; views: Mockup['views'] }
   | { type: 'setViewLabel'; index: number; label: string }
   | { type: 'setPageColor'; pageColor: Mockup['pageColor'] }
@@ -113,6 +114,11 @@ export function apply(m: Mockup, a: Action): Mockup {
       return { ...m, midBand: a.on }
     case 'setTemplate':
       return resyncLinked({ ...m, template: a.template })
+
+    // A whole new document as one undo step (Dup -> next): if the save download was blocked,
+    // Ctrl+Z still brings the previous sample back.
+    case 'replaceAll':
+      return a.mockup
 
     // Switch sock style (Crew, Crew Grip, ...): take the style's sock and header defaults, keep
     // everything that is the client's design (colours, patterns, logo, placements, client name).

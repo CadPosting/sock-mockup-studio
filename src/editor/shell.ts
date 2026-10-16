@@ -4,8 +4,9 @@
 // so they can never end up in an export (B1.4).
 
 import { newId } from '../model/defaults'
-import type { Placement, ZoneId } from '../model/types'
+import type { Mockup, Placement, ZoneId } from '../model/types'
 import { copyPng, downloadBlob, exportFileName, exportPng } from '../io/export-png'
+import { isMockupFile, nextSample, saveMockupFile } from '../io/file'
 import { checkLogoFile } from '../io/upload'
 import { readImage } from '../util/palette'
 import { render } from '../render/sheet'
@@ -13,7 +14,7 @@ import type { Store } from '../store/store'
 import { h } from './dom'
 import { viewCentre } from './geometry'
 import { startInlineEdit } from './inline-edit'
-import { openStartDialog, type StartDialogOptions } from './start-dialog'
+import { hasWork, openStartDialog, readMockupFile, type StartDialogOptions } from './start-dialog'
 import { createInspector } from './inspector'
 import { renderLayers } from './layers'
 import { DEFAULT_GRIP, DEFAULT_MOTIF } from './panels'
@@ -48,7 +49,15 @@ function parseSelectKey(key: string): Selection {
   return null
 }
 
+let unmountPrevious: (() => void) | null = null
+
 export function mountEditor(root: HTMLElement, store: Store) {
+  // One editor per page. Mounting again (tests, or a future hot reload) removes the previous
+  // editor's window/document listeners first, so they can't act twice or keep stale state.
+  unmountPrevious?.()
+  const lifetime = new AbortController()
+  const listen = { signal: lifetime.signal }
+  unmountPrevious = () => lifetime.abort()
   const selection = createSelection()
 
   const undo = button('↶ Undo', { title: 'Undo (Ctrl+Z)' })
@@ -75,6 +84,10 @@ export function mountEditor(root: HTMLElement, store: Store) {
     selection.set({ kind: 'motif' })
   })
 
+  const openBtn = button('Open', { title: 'Open a .sockmockup.json file (or drop one on the window)' })
+  const saveBtn = button('Save', { title: 'Save as a .sockmockup.json file (Ctrl+S)' })
+  const dupBtn = button('Dup → next', { title: 'Save this file, then start the next SAMPLE with everything copied' })
+
   const addLogoBtn = button('+ Logo', { title: 'Put the client logo on the sock' })
   const addTextBtn = button('+ Text', { title: 'Add a text wordmark to the sock' })
 
@@ -96,15 +109,13 @@ export function mountEditor(root: HTMLElement, store: Store) {
   exportBtn.addEventListener('click', () => setExportOpen(exportList.hidden))
   document.addEventListener('click', (e) => {
     if (!exportMenu.contains(e.target as Node)) setExportOpen(false)
-  })
+  }, listen)
 
-  // Buttons for later tasks are shown but disabled, so the layout is final from now on.
-  const later = (label: string, task: string) => button(label, { disabled: true, title: `Coming in ${task}` })
 
   const topbar = h(
     'header',
     { class: 'topbar' },
-    group(menuBtn, layersToggle, later('Save', 'task 17'), later('Dup → next', 'task 17')),
+    group(menuBtn, layersToggle, openBtn, saveBtn, dupBtn),
     group(undo, redo),
     group(addLogoBtn, addTextBtn, dots, motifBtn),
     h('div', { class: 'topbar__spacer' }),
@@ -118,13 +129,13 @@ export function mountEditor(root: HTMLElement, store: Store) {
   // Editor-only drop box over the header logo spot (app-flow "No logo yet"). It's HTML on top
   // of the sheet, not part of the SVG, so it can never be exported.
   const dropBox = h('button', { type: 'button', class: 'logo-drop', title: 'Upload the client logo' }, 'Drop logo here')
-  const overlay = createOverlay(store, selection)
+  const overlay = createOverlay(store, selection, lifetime.signal)
   sheet.append(svgHolder, overlay.svg, dropBox)
   const stage = h('main', { class: 'stage' }, sheet)
   // Logo upload: one hidden file input shared by the Upload button and the drop box.
   const fileInput = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/svg+xml', hidden: true })
   const pickLogo = () => fileInput.click()
-  const inspector = createInspector(store, selection, pickLogo, (name) =>
+  const inspector = createInspector(store, selection, pickLogo, lifetime.signal, (name) =>
     toast(`Switched to ${name}. Spec lines reset to its defaults (Ctrl+Z to undo).`),
   )
   const right = h('aside', { class: 'panel panel--inspector', 'aria-label': 'Inspector' }, inspector.root)
@@ -189,12 +200,108 @@ export function mountEditor(root: HTMLElement, store: Store) {
     e.preventDefault()
     dropBox.classList.remove('logo-drop--over')
     const f = e.dataTransfer?.files[0]
-    if (f) void uploadLogo(f)
+    if (!f) return
+    if (isMockupFile(f)) void openFile(f) // a mockup file dropped here means "open it"
+    else void uploadLogo(f)
   })
 
   layersToggle.addEventListener('click', () => app.classList.toggle('editor--layers-open'))
 
+  // ---------- files (task 17) ----------
+  // Unsaved = there's work, and it isn't the state last saved to (or opened from) a file. Undoing
+  // back to that state counts as saved again, since the store reuses the same object.
+  let lastSaved: Mockup | null = null
+  // Once there's a saved file, compare against it; before that, anything beyond an untouched style.
+  const isUnsaved = () => (lastSaved ? store.get() !== lastSaved : hasWork(store.get()))
+
+  /** Finish a text edit / stop a drag before the document is replaced, so neither can write into it. */
+  const endInteractions = () => {
+    sheet.querySelector<HTMLInputElement>('.inline-edit')?.blur()
+    overlay.cancelDrag()
+  }
+  const markSaved = () => (lastSaved = store.get())
+
+  const openInput = h('input', { type: 'file', accept: '.json,.sockmockup.json,application/json', hidden: true })
+  // Inline confirmation bar for Open over unsaved work (no browser popups, design brief).
+  const confirmBar = h('div', { class: 'confirm-bar', role: 'alertdialog', hidden: true })
+  app.insertBefore(confirmBar, banner)
+  root.append(openInput)
+  function askToReplace(text: string, go: () => void) {
+    const yes = h('button', { type: 'button', class: 'btn btn--primary' }, 'Open it')
+    const no = h('button', { type: 'button', class: 'btn btn--outline' }, 'Cancel')
+    yes.addEventListener('click', () => {
+      confirmBar.hidden = true
+      go()
+    })
+    no.addEventListener('click', () => (confirmBar.hidden = true))
+    confirmBar.replaceChildren(h('span', {}, text), yes, no)
+    confirmBar.hidden = false
+    yes.focus()
+  }
+
+  function saveNow(): string {
+    const name = saveMockupFile(store.get())
+    markSaved()
+    toast(`Saved ${name}`)
+    return name
+  }
+
+  async function openFile(file: File) {
+    const r = await readMockupFile(file)
+    if (!r.ok) return toast(r.message, 'error') // the current mockup stays untouched
+    const go = () => {
+      endInteractions()
+      selection.set(null)
+      store.load(r.mockup)
+      markSaved()
+      toast(`Opened ${file.name}`)
+    }
+    if (isUnsaved()) askToReplace(`Open ${file.name}? ${store.get().header.client || 'The current mockup'} has unsaved changes.`, go)
+    else go()
+  }
+
+  openBtn.addEventListener('click', () => openInput.click())
+  openInput.addEventListener('change', () => {
+    const f = openInput.files?.[0]
+    openInput.value = ''
+    if (f) void openFile(f)
+  })
+  saveBtn.addEventListener('click', () => void saveNow())
+  dupBtn.addEventListener('click', () => {
+    // App-flow Journey 3: the current file is saved first, then SAMPLE n+1 starts.
+    endInteractions()
+    saveNow()
+    const next = nextSample(store.get())
+    selection.set(null)
+    // An undo step, not a fresh history: the browser can't confirm the download finished, so if
+    // it was blocked, Ctrl+Z brings the previous sample back.
+    store.dispatch({ type: 'replaceAll', mockup: next })
+    const tag = next.header.tag
+    toast(tag.mode === 'sample' ? `Saved. Now on SAMPLE ${tag.n} (Ctrl+Z to go back).` : 'Saved. Started a copy (style-code tag kept).')
+  })
+
+  // Drop a .sockmockup.json anywhere on the window to open it (logos go on the logo box).
+  window.addEventListener('dragover', (e) => {
+    if (e.dataTransfer?.types.includes('Files')) e.preventDefault()
+  }, listen)
+  window.addEventListener('drop', (e) => {
+    if (e.defaultPrevented) return // the logo drop box already handled it
+    const f = e.dataTransfer?.files[0]
+    if (!f) return
+    e.preventDefault()
+    if (isMockupFile(f)) void openFile(f)
+    else toast('To add a logo, drop it on the logo box in the header.', 'error')
+  }, listen)
+
+  // Browser's standard "Leave site?" prompt when there are unsaved changes (app-flow states).
+  window.addEventListener('beforeunload', (e) => {
+    if (!isUnsaved()) return
+    e.preventDefault()
+    e.returnValue = '' // still needed by some browsers to show the prompt
+  }, listen)
+
   function openMenu(opts: Partial<Pick<StartDialogOptions, 'canClose' | 'draft'>> = {}) {
+    endInteractions()
     selection.set(null)
     openStartDialog(app, {
       store,
@@ -205,6 +312,10 @@ export function mountEditor(root: HTMLElement, store: Store) {
         menuBtn.focus()
       },
       onError: (message) => toast(message, 'error'),
+      isUnsaved,
+      onOpened: markSaved,
+      onNew: () => (lastSaved = null),
+      signal: lifetime.signal,
     })
   }
   menuBtn.addEventListener('click', () => openMenu())
@@ -320,8 +431,8 @@ export function mountEditor(root: HTMLElement, store: Store) {
       pressedPlacement = false
       pressed = null
     })
-  window.addEventListener('pointerup', endPress)
-  window.addEventListener('pointercancel', endPress)
+  window.addEventListener('pointerup', endPress, listen)
+  window.addEventListener('pointercancel', endPress, listen)
   svgHolder.addEventListener('pointerup', (e) => {
     if (e.button !== 0 || !pressed) return
     handledUp = true
@@ -390,8 +501,8 @@ export function mountEditor(root: HTMLElement, store: Store) {
     undo.disabled = !store.canUndo()
     redo.disabled = !store.canRedo()
   }
-  store.subscribe(update)
-  selection.subscribe(update)
+  const unsubscribe = [store.subscribe(update), selection.subscribe(update)]
+  lifetime.signal.addEventListener('abort', () => unsubscribe.forEach((u) => u()))
   update()
 
   document.addEventListener('keydown', (e) => {
@@ -432,6 +543,11 @@ export function mountEditor(root: HTMLElement, store: Store) {
         return
       }
     }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+      e.preventDefault() // Ctrl+S = save file (app-flow keyboard table), not the browser's "save page"
+      saveNow()
+      return
+    }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') {
       e.preventDefault() // Ctrl+E = export PNG (app-flow keyboard table)
       exportHook()
@@ -443,7 +559,7 @@ export function mountEditor(root: HTMLElement, store: Store) {
     e.preventDefault()
     if (e.shiftKey) store.redo()
     else store.undo()
-  })
+  }, listen)
 
   return {
     setAutosaveOk(ok: boolean) {
@@ -453,6 +569,8 @@ export function mountEditor(root: HTMLElement, store: Store) {
     uploadLogo,
     toast,
     openMenu,
+    isUnsaved,
+    openFile,
     runExport,
     setExportHook(fn: () => void) {
       exportHook = fn

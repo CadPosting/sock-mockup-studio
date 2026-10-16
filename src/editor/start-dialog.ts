@@ -79,6 +79,14 @@ export type StartDialogOptions = {
   draft?: { client: string; savedAt: number }
   onDone: (message?: string) => void
   onError: (message: string) => void
+  /** Whether replacing the current mockup would lose work. Default: it has any work at all. */
+  isUnsaved?: () => boolean
+  /** Called when a file was opened (the shell then counts it as saved). */
+  onOpened?: () => void
+  /** Called when a new mockup was started from a style (nothing saved yet). */
+  onNew?: () => void
+  /** The editor's lifetime: when it ends, the menu goes too (no leftover key capture). */
+  signal?: AbortSignal
 }
 
 export function openStartDialog(parent: HTMLElement, o: StartDialogOptions): HTMLElement | null {
@@ -108,16 +116,19 @@ export function openStartDialog(parent: HTMLElement, o: StartDialogOptions): HTM
     confirmBar.hidden = false
     yes.focus()
   }
-  const replaceWith = (m: Mockup, message: string) => {
+  const replaceWith = (m: Mockup, message: string, opened: boolean) => {
     o.store.load(m)
+    if (opened) o.onOpened?.()
+    else o.onNew?.()
     close(message)
   }
-  const guarded = (m: Mockup, message: string) => {
-    // Ask whenever there's work to lose, including a draft restored at boot.
-    if (hasWork(o.store.get())) {
+  const unsaved = o.isUnsaved ?? (() => hasWork(o.store.get()))
+  const guarded = (m: Mockup, message: string, opened = false) => {
+    // Ask whenever there's unsaved work to lose, including a draft restored at boot.
+    if (unsaved()) {
       const client = o.store.get().header.client || 'the current mockup'
-      ask(`This replaces ${client}. It isn't saved to a file yet.`, () => replaceWith(m, message))
-    } else replaceWith(m, message)
+      ask(`This replaces ${client}. It isn't saved to a file yet.`, () => replaceWith(m, message, opened))
+    } else replaceWith(m, message, opened)
   }
 
   const cards = h('div', { class: 'start__cards' })
@@ -139,7 +150,7 @@ export function openStartDialog(parent: HTMLElement, o: StartDialogOptions): HTM
     const r = await readMockupFile(f)
     if (!open) return // the menu was closed while reading: do nothing
     if (!r.ok) return o.onError(r.message) // the current mockup stays untouched
-    guarded(r.mockup, `Opened ${f.name}.`)
+    guarded(r.mockup, `Opened ${f.name}.`, true)
   })
 
   const actions = h('div', { class: 'start__actions' }, openBtn, fileInput)
@@ -175,7 +186,11 @@ export function openStartDialog(parent: HTMLElement, o: StartDialogOptions): HTM
     if (e.key === 'Escape' && o.canClose) close()
     if (e.key !== 'Tab') e.stopPropagation()
   }
-  document.addEventListener('keydown', onKey, true)
+  document.addEventListener('keydown', onKey, { capture: true, signal: o.signal })
+  o.signal?.addEventListener('abort', () => {
+    open = false
+    backdrop.remove()
+  })
   parent.append(backdrop)
   ;(dialog.querySelector<HTMLElement>('[data-action="resume"]') ?? cards.querySelector<HTMLElement>('.start__card'))?.focus()
   return backdrop
