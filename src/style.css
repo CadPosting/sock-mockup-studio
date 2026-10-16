@@ -1,3 +1,4 @@
+/* Editor tokens (design brief B3). The sheet itself has its own colours, set by render(). */
 :root {
   --bg: #f4f4f5;
   --panel: #ffffff;
@@ -8,6 +9,13 @@
   --accent-soft: #dbeafe;
   --danger: #dc2626;
   --radius: 6px;
+  --topbar-h: 48px;
+  --layers-w: 220px;
+  --inspector-w: 300px;
+}
+
+* {
+  box-sizing: border-box;
 }
 
 body {
@@ -15,4 +23,294 @@ body {
   background: var(--bg);
   color: var(--text);
   font: 13px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+/* ---------- layout (B2) ---------- */
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.workspace {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: var(--layers-w) 1fr var(--inspector-w);
+}
+
+.topbar {
+  height: var(--topbar-h);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.topbar__group {
+  display: flex;
+  gap: 2px;
+  padding: 0 6px;
+  border-right: 1px solid var(--line);
+}
+
+.topbar__group:last-child {
+  border-right: 0;
+}
+
+.topbar__spacer {
+  flex: 1;
+}
+
+/* The Layers toggle only exists for the collapsed layout. */
+.topbar__layers-toggle {
+  display: none;
+}
+
+.panel {
+  background: var(--panel);
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.panel--layers {
+  border-right: 1px solid var(--line);
+}
+
+.panel--inspector {
+  border-left: 1px solid var(--line);
+}
+
+/* Sheet fits the free space at 4:3 with a soft shadow on the grey surround. */
+.stage {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow: hidden;
+}
+
+.sheet {
+  aspect-ratio: 4 / 3;
+  width: min(100%, calc((100vh - var(--topbar-h) - 48px) * 4 / 3));
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.08), 0 8px 24px rgb(0 0 0 / 0.08);
+}
+
+.sheet > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.banner {
+  padding: 4px 12px;
+  background: #fef2f2;
+  color: var(--danger);
+  border-bottom: 1px solid #fecaca;
+  font-size: 12px;
+}
+
+.too-small {
+  display: none;
+  padding: 32px;
+  text-align: center;
+  color: var(--muted);
+}
+
+/* 1024-1280: Layers collapses behind a toggle and slides over the sheet when opened. */
+@media (max-width: 1279px) {
+  .workspace {
+    grid-template-columns: 1fr var(--inspector-w);
+    position: relative;
+  }
+  .topbar__layers-toggle {
+    display: inline-flex;
+  }
+  .panel--layers {
+    display: none;
+  }
+  .editor--layers-open .panel--layers {
+    display: block;
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: var(--layers-w);
+    z-index: 2;
+    box-shadow: 4px 0 16px rgb(0 0 0 / 0.08);
+  }
+}
+
+/* Below 1024 the editor doesn't fit; say so instead of a cramped UI. */
+@media (max-width: 1023px) {
+  .editor {
+    display: none;
+  }
+  .too-small {
+    display: block;
+  }
+}
+
+/* ---------- controls (B4) ---------- */
+
+.btn {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition: background-color 0.12s;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--bg);
+}
+
+.btn:disabled {
+  color: var(--muted);
+  opacity: 0.55;
+  cursor: default;
+}
+
+.btn--primary {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.btn--primary:disabled {
+  color: #fff;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.field {
+  display: block;
+  margin-bottom: 12px;
+}
+
+.field__label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.input {
+  width: 100%;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+}
+
+.segmented {
+  display: flex;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.segmented__btn {
+  flex: 1;
+  min-height: 30px;
+  border: 0;
+  background: var(--panel);
+  font: inherit;
+  cursor: pointer;
+}
+
+.segmented__btn[aria-checked='true'] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.hint {
+  margin: 0 0 16px;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  color: #1e40af;
+}
+
+.inspector__title {
+  margin: 0 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+/* ---------- layers ---------- */
+
+.layers__section {
+  margin-bottom: 16px;
+}
+
+.layers__title {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.layers__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.layers__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 6px;
+  border-radius: var(--radius);
+}
+
+.layers__swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid rgb(0 0 0 / 0.15);
+  flex: none;
+}
+
+.layers__label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.layers__note {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.layers__empty {
+  margin: 0;
+  padding: 0 6px;
+  color: var(--muted);
 }
