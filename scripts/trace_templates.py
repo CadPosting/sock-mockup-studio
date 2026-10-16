@@ -92,15 +92,24 @@ def trace_profile(labels: np.ndarray, crop: tuple[int, int, int, int]) -> dict[s
     x0, y0, x1, y1 = crop
     lab = labels[y0:y1, x0:x1]
     # Silhouette: every non-white pixel, small gaps between zones closed.
-    sil = ndimage.binary_closing(lab != WHITE, iterations=2)
+    # Closing seals the thin white seams between zones (they put kinks in the outline at the toe);
+    # opening then shaves off 1-2px slivers, like the cuff rectangle's outline sticking out as "horns".
+    sil = ndimage.binary_closing(np.pad(lab != WHITE, 6), iterations=4)[6:-6, 6:-6]
     sil = ndimage.binary_fill_holes(sil)
+    sil = ndimage.binary_opening(sil, iterations=3)
     reds = sorted(components(lab == RED), key=top_y)
     if len(reds) != 2:
         raise ValueError(f"expected 2 red zones (cuff, toe), found {len(reds)}")
     heel = components(lab == YELLOW)
     if len(heel) != 1:
         raise ValueError(f"expected 1 yellow heel, found {len(heel)}")
-    return {"silhouette": sil, "cuff": reds[0], "toe": reds[1], "heel": heel[0]}
+    # Grow each zone outward past the sock edge (never into other zones). The renderer clips
+    # zones to the silhouette, so the overlap is invisible but stops body colour showing in a
+    # gap between a zone and the outline (it did along the top of the crew cuff).
+    outside = ~sil
+    zones = {"cuff": reds[0], "toe": reds[1], "heel": heel[0]}
+    zones = {k: z | (ndimage.binary_dilation(z, iterations=6) & outside) for k, z in zones.items()}
+    return {"silhouette": sil, **zones}
 
 
 def to_local(
@@ -112,7 +121,11 @@ def to_local(
     otherwise the sock is scaled to that height (crew slide is drawn ~1.7x bigger).
     """
     x0, y0, _, _ = crop
-    polys = {k: outline(m) + [x0, y0] for k, m in masks.items()}  # back to slide coords
+    # The silhouette gets a coarser simplification: closely spaced points at sharp corners
+    # make the smoothing spline overshoot into little hooks.
+    polys = {
+        k: outline(m, tolerance=2.0 if k == "silhouette" else 1.2) + [x0, y0] for k, m in masks.items()
+    }  # back to slide coords
     sil = polys["silhouette"]
     minx, miny = sil.min(0)
     maxx, maxy = sil.max(0)
@@ -137,11 +150,28 @@ def smooth_path(pts: np.ndarray) -> str:
     if n > 1 and np.allclose(pts[0], pts[-1]):
         pts, n = pts[:-1], n - 1
     f = lambda v: f"{v:.1f}".rstrip("0").rstrip(".")  # noqa: E731
+
+    # Tangent at each point. Plain Catmull-Rom overshoots at sharp corners (the cuff's square
+    # corners came out as little hooks), so corners turning more than ~55 degrees get no tangent
+    # and stay sharp.
+    tangents = []
+    for i in range(n):
+        a, b, c = pts[i - 1], pts[i], pts[(i + 1) % n]
+        u, v = b - a, c - b
+        cos = np.dot(u, v) / (np.linalg.norm(u) * np.linalg.norm(v) + 1e-9)
+        tangents.append(np.zeros(2) if cos < 0.57 else (c - a) / 6)
+
+    def capped(t: np.ndarray, seg: float) -> np.ndarray:
+        # A handle longer than a third of its segment makes the curve bulge past the next point.
+        norm = np.linalg.norm(t)
+        return t if norm <= seg / 3 else t * (seg / 3 / norm)
+
     parts = [f"M{f(pts[0][0])} {f(pts[0][1])}"]
     for i in range(n):
-        p0, p1, p2, p3 = pts[i - 1], pts[i], pts[(i + 1) % n], pts[(i + 2) % n]
-        c1 = p1 + (p2 - p0) / 6
-        c2 = p2 - (p3 - p1) / 6
+        p1, p2 = pts[i], pts[(i + 1) % n]
+        seg = float(np.linalg.norm(p2 - p1))
+        c1 = p1 + capped(tangents[i], seg)
+        c2 = p2 - capped(tangents[(i + 1) % n], seg)
         parts.append(
             f"C{f(c1[0])} {f(c1[1])} {f(c2[0])} {f(c2[1])} {f(p2[0])} {f(p2[1])}"
         )
