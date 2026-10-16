@@ -3,7 +3,7 @@ import { flatView } from '../templates/flat'
 import { PROFILE_EXTRAS } from '../templates/profile-extras'
 import { PROFILE_SIZE, PROFILES, PROFILES_RIGHT } from '../templates/profiles.generated'
 import { el } from './dom'
-import { gripDots, sameLook, zoneFill } from './patterns'
+import { gripDots, motif, sameLook, zoneFill } from './patterns'
 import { rightFromLeftTransform } from './placements'
 
 // Left edge of each of the 4 view slots on the 1024x768 sheet, measured off Peter's slides.
@@ -128,6 +128,27 @@ export function renderView(
   const painted = el('g', { 'clip-path': `url(#${clipId})` })
   painted.append(...shapes.slice(0, 1).map((s) => zonePath(s.d, base, m)))
 
+  // Paint order: foot, sole edge, motif, profile stripes, then cuff/band/heel/toe over all of them.
+  const foot = zones.filter((z) => z.zone === 'foot')
+  painted.append(...foot.map((z) => zonePath(z.d, z.zone, m, z.transform)))
+  // Sole edge: the outline stroked thick (only the inside half shows), kept to the sole side.
+  if (soleEdge) {
+    painted.append(
+      el('path', {
+        d: soleEdge.outline,
+        fill: 'none',
+        stroke: m.zones.sole.hex, // flat colour, see the profile stripes above
+        'stroke-width': SOLE_EDGE * 2,
+        'clip-path': `url(#${soleClipId})`,
+        'data-zone': 'sole',
+        'data-stroke': '',
+      }),
+    )
+  }
+  // The repeat motif: on the leg and foot only (stripes, cuff, band, heel and toe paint over it).
+  const scattered = motif(m, index, Boolean(flip))
+  if (scattered) painted.append(scattered)
+
   // Profile cuff stripes, widest first, each stroke reaching its distance into the leg. A
   // leg-coloured stroke between them makes the gaps. The cuff fill (next) covers the inner halves.
   if (stripeEdges.length && m.stripes > 0) {
@@ -157,23 +178,6 @@ export function renderView(
     }
   }
 
-  // Foot first, then the sole edge over it, then cuff/band/heel/toe over both.
-  const foot = zones.filter((z) => z.zone === 'foot')
-  painted.append(...foot.map((z) => zonePath(z.d, z.zone, m, z.transform)))
-  // Sole edge: the outline stroked thick (only the inside half shows), kept to the sole side.
-  if (soleEdge) {
-    painted.append(
-      el('path', {
-        d: soleEdge.outline,
-        fill: 'none',
-        stroke: m.zones.sole.hex, // flat colour, see the profile stripes above
-        'stroke-width': SOLE_EDGE * 2,
-        'clip-path': `url(#${soleClipId})`,
-        'data-zone': 'sole',
-        'data-stroke': '',
-      }),
-    )
-  }
   painted.append(...zones.filter((z) => z.zone !== 'foot').map((z) => zonePath(z.d, z.zone, m, z.transform)))
   // Grip dots go over the zone colours but under the zone lines (Peter's REWD heel).
   const dots = isProfile(kind) ? null : gripDots(m, index)

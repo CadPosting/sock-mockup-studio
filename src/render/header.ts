@@ -11,24 +11,65 @@ import { el } from './dom'
 const FONT = 'Arimo, Arial, Helvetica, sans-serif'
 export const SAMPLE_RED = '#e0432b'
 
-const LOGO_BOX = { x: 24, y: 28, width: 336, height: 97 }
-/**
- * The logo box ends before the title. The brief's box (x 24-360) is right for 1 column (title at
- * x 400) but overlaps the 2-column title at x 340, so there it stops at x 324.
- */
-const logoBox = (m: Mockup) => (m.header.columns === 2 ? { ...LOGO_BOX, width: 300 } : LOGO_BOX)
-// PYC/REWD: 117x33 box at 92,171, bold 21 text. Under a short, wide logo (DWU) Peter moves it
-// up to y 117; tagY() decides from the logo's shape.
-const TAG = { x: 92, y: 171, highY: 117, padX: 6, height: 33, baseline: 25, size: 21 }
-const SHORT_LOGO = 60 // drawn height below which the logo counts as "short"
+export const LABEL_Y = { crew: 291, ankle: 268, 'ankle-tab': 261 } as const // text baseline (PYC = ankle-tab sits higher)
+const LABEL_CAP = 15 // the view labels' text height above their baseline
 
-/** Tag top: up close under a short, wide logo, otherwise Peter's usual spot. */
-export function tagY(m: Mockup): number {
+const LOGO = { x: 24, y: 28, fitHeight: 97 }
+// A style-code tag is two lines (cap top to second baseline = 55) and must clear the labels.
+const CODE_BLOCK = 55
+const codeMaxTop = (m: Mockup) => LABEL_Y[m.template] - LABEL_CAP - CODE_BLOCK - 10
+/**
+ * The logo ends before the title. The brief's x 24-360 is right for 1 column (title at x 400) but
+ * overlaps the 2-column title at x 340, so there it stops at x 324.
+ */
+const logoMaxWidth = (m: Mockup) => (m.header.columns === 2 ? 300 : 336)
+
+/**
+ * Where the header logo is drawn. Its height is the user's "Logo size" (Peter sizes logos per
+ * client: DWU ~52 tall, PYC 113, Impact 178); without one it fits the brief's 97-tall box. Either
+ * way it never runs past the title.
+ */
+export function logoRect(m: Mockup): { x: number; y: number; width: number; height: number } | null {
   const a = m.header.logoAssetId ? m.assets[m.header.logoAssetId] : undefined
-  if (!a?.width || !a.height) return TAG.y
-  const box = logoBox(m)
-  const drawn = Math.min(box.height, (box.width * a.height) / a.width) // "contain" fit
-  return drawn < SHORT_LOGO ? TAG.highY : TAG.y
+  if (!a) return null
+  const aspect = a.width && a.height ? a.width / a.height : 1
+  const maxW = logoMaxWidth(m)
+  const wanted = Math.min(m.header.logoHeight ?? Math.min(LOGO.fitHeight, maxW / aspect), tallestForTag(m))
+  const width = Math.min(maxW, wanted * aspect)
+  return { x: LOGO.x, y: LOGO.y, width, height: width / aspect }
+}
+
+// 117x33 box at x 92, bold 21 text. Peter puts it ~38 units under the logo's bottom (DWU 117,
+// PYC 171, Nutrio 187), never above 117 and never down into the view labels.
+const TAG = { x: 92, y: 171, minY: 117, maxY: 215, gap: 38, padX: 6, height: 33, baseline: 25, size: 21 }
+
+/** With a style-code tag, the logo must leave room for its two lines above the view labels. */
+function tallestForTag(m: Mockup): number {
+  return m.header.tag.mode === 'code' ? codeMaxTop(m) - 10 - LOGO.y : 180
+}
+
+/** Tallest the logo can be drawn: a wide logo hits the width limit first; a style code needs room. */
+export function maxLogoHeight(m: Mockup): number {
+  const a = m.header.logoAssetId ? m.assets[m.header.logoAssetId] : undefined
+  const aspect = a?.width && a.height ? a.width / a.height : 1
+  return Math.max(20, Math.min(180, tallestForTag(m), Math.floor(logoMaxWidth(m) / aspect)))
+}
+
+/**
+ * Style-code tag (StFX): two lines whose block starts ~38 under the logo like the SAMPLE tag
+ * (StFX: cap top 140, baselines 162 / 195). Capped so the second line stays above the labels.
+ */
+function codeBaselines(m: Mockup): [number, number] {
+  const r = logoRect(m)
+  const top = r ? Math.min(codeMaxTop(m), Math.max(117, r.y + r.height + TAG.gap)) : 140
+  return [Math.round(top + 22), Math.round(top + 55)]
+}
+
+/** Tag top: just under the logo as drawn; Peter's usual 171 when there's no logo. */
+export function tagY(m: Mockup): number {
+  const r = logoRect(m)
+  if (!r) return TAG.y
+  return Math.round(Math.min(TAG.maxY, Math.max(TAG.minY, r.y + r.height + TAG.gap)))
 }
 
 // 1 column (DWU): bold 30 title and 21px specs at x 400, lines every 25 units.
@@ -102,7 +143,7 @@ function logo(m: Mockup): SVGElement | null {
   // SVGs loaded this way (TDD §8).
   return el('image', {
     href: asset.dataUrl,
-    ...logoBox(m),
+    ...logoRect(m)!,
     preserveAspectRatio: 'xMinYMid meet',
   })
 }
@@ -129,9 +170,10 @@ function tag(m: Mockup): SVGElement {
   } else {
     // Style code (StFX): two centred lines of red text, size 30, no box.
     const cx = 216
+    const [b1, b2] = codeBaselines(m)
     g.append(
-      text(t.line1, { x: cx, y: 162, 'text-anchor': 'middle', 'font-size': 30, fill: SAMPLE_RED, 'data-field': 'tag:line1' }),
-      text(t.line2, { x: cx, y: 195, 'text-anchor': 'middle', 'font-size': 30, fill: SAMPLE_RED, 'data-field': 'tag:line2' }),
+      text(t.line1, { x: cx, y: b1, 'text-anchor': 'middle', 'font-size': 30, fill: SAMPLE_RED, 'data-field': 'tag:line1' }),
+      text(t.line2, { x: cx, y: b2, 'text-anchor': 'middle', 'font-size': 30, fill: SAMPLE_RED, 'data-field': 'tag:line2' }),
     )
   }
   return g

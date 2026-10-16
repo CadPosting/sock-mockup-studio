@@ -151,6 +151,8 @@ const paletteRowSchema = z.object({
 const headerSchema = z.object({
   client: shortText,
   logoAssetId: idString.optional(),
+  // Drawn logo height (Peter sizes logos per client: DWU ~52, PYC 113, Impact 178). Absent = fit.
+  logoHeight: z.number().min(20).max(180).optional(),
   tag: tagSchema,
   title: shortText,
   titleBold: z.boolean(),

@@ -1,6 +1,6 @@
 import type { Mockup } from '../model/types'
-import { renderHeader } from './header'
-import { motif, patternDefs } from './patterns'
+import { LABEL_Y, renderHeader } from './header'
+import { patternDefs } from './patterns'
 import { renderPlacements } from './placements'
 import { el } from './dom'
 import { renderView } from './views'
@@ -9,7 +9,6 @@ export const SHEET = { width: 1024, height: 768 } // same as the Keynote slide, 
 const PAGE_COLORS = { white: '#ffffff', grey: '#ebebeb' } as const // design brief A2
 // View labels sit under the header. Crew sheets put them lower (the crew profile is taller):
 // measured on DWU/Impact/PYC (ankle) and REWD/Nutrio/StFX (crew).
-const LABEL_Y = { crew: 291, ankle: 268, 'ankle-tab': 261 } as const // text baseline (PYC = ankle-tab sits higher)
 // Peter centres labels at fixed points, not over each slot's middle (same on all six sheets).
 const LABEL_X = [118, 354, 595, 855] as const
 
@@ -41,8 +40,6 @@ export function render(m: Mockup): SVGSVGElement {
     // Paint order per view: sock, clipped logos, outline, unclipped logos (which may overlap it).
     const drawn = renderView(m, i)
     const { clipped, free } = renderPlacements(m, i, drawn.placementClipId)
-    const scattered = motif(m, i)
-    if (scattered) clipped.prepend(scattered) // under the individual logos
     drawn.g.append(clipped, drawn.outline, free)
     svg.append(label, drawn.g)
   })

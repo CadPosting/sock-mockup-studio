@@ -5,6 +5,7 @@ import { STYLE_PRESETS } from '../../src/model/defaults'
 import { migrate } from '../../src/model/schema'
 import { renderHeader, tagY } from '../../src/render/header'
 import { createStore } from '../../src/store/store'
+import { mountEditor } from '../../src/editor/shell'
 import { extractPalette } from '../../src/util/palette'
 
 const bytes = (...b: number[]) => new Uint8Array(b)
@@ -97,13 +98,62 @@ describe('logo in the mockup', () => {
     expect(store.get().assets).toEqual({})
   })
 
-  it('SAMPLE tag moves up under a short, wide logo (DWU) and stays put otherwise (PYC)', () => {
+  it('SAMPLE tag sits ~38 under the logo as drawn: DWU 117, a tall fitted logo 163, Logo size moves it', () => {
     const m = STYLE_PRESETS.crew.make()
-    expect(tagY(m)).toBe(171)
+    expect(tagY(m)).toBe(171) // no logo: Peter's usual spot
     m.assets.l = { name: 'l.png', mime: 'image/png', dataUrl: PNG, width: 600, height: 90 }
     m.header.logoAssetId = 'l'
-    expect(tagY(m)).toBe(117)
-    m.assets.l = { ...m.assets.l, width: 220, height: 110 }
-    expect(tagY(m)).toBe(171)
+    expect(tagY(m)).toBe(117) // DWU-like: short and wide
+    m.assets.l = { ...m.assets.l, width: 220, height: 113 }
+    expect(tagY(m)).toBe(163) // fitted to the 97-tall box
+    m.header.logoHeight = 113 // PYC's size
+    expect(tagY(m)).toBe(179)
+    m.header.logoHeight = 180 // as big as it goes: the tag stops above the view labels
+    expect(tagY(m)).toBe(215)
+  })
+})
+
+describe('Codex review of task 18', () => {
+  const PNG = toDataUrl(bytes(...PNG_SIG), 'image/png')
+  it('a style-code tag follows the logo and never overlaps it or the view labels', () => {
+    const m = STYLE_PRESETS['dress-crew'].make()
+    m.assets.l = { name: 'l.png', mime: 'image/png', dataUrl: PNG, width: 336, height: 74 } // fits the 336 width
+    m.header.logoAssetId = 'l'
+    m.header.logoHeight = 74 // StFX
+    const ys = () => [...renderHeader(m).querySelectorAll('[data-part="tag"] text')].map((t) => Number(t.getAttribute('y')))
+    expect(ys()).toEqual([162, 195]) // Peter's StFX positions
+    m.assets.l = { ...m.assets.l, width: 200, height: 200 }
+    m.header.logoHeight = 180 // tall square logo: bottom at y 208
+    const [l1, l2] = ys()
+    const logoBottom = 28 + Number(renderHeader(m).querySelector('image')!.getAttribute('height'))
+    expect(l1 - 22).toBeGreaterThan(logoBottom) // first line's cap top clears the logo
+    expect(l2).toBeLessThan(291 - 15) // and the block stays above the crew view labels
+    m.template = 'ankle' // ankle labels sit higher (268): the logo is capped smaller to keep room
+    const [, a2] = ys()
+    expect(a2).toBeLessThan(268 - 15)
+  })
+
+  it('pressing the Logo size slider without moving it leaves no open undo group', () => {
+    const root = document.createElement('div')
+    document.body.replaceChildren(root)
+    const store = createStore(STYLE_PRESETS.crew.make())
+    store.dispatch({ type: 'setLogo', id: 'l', asset: { name: 'l.png', mime: 'image/png', dataUrl: PNG, width: 200, height: 100 } })
+    mountEditor(root, store)
+    const slider = root.querySelector<HTMLInputElement>('input[aria-label="Logo size"]')!
+    slider.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }))
+    window.dispatchEvent(new MouseEvent('pointerup'))
+    store.dispatch({ type: 'setStripes', stripes: 1 })
+    store.dispatch({ type: 'setStripes', stripes: 2 })
+    store.undo()
+    expect(store.get().stripes).toBe(1) // two separate undo steps, not one merged gesture
+  })
+
+  it('the slider only goes as high as the logo can actually be drawn', () => {
+    const root = document.createElement('div')
+    document.body.replaceChildren(root)
+    const store = createStore(STYLE_PRESETS['crew-grip'].make()) // 2 columns: logo at most 300 wide
+    store.dispatch({ type: 'setLogo', id: 'l', asset: { name: 'l.png', mime: 'image/png', dataUrl: PNG, width: 300, height: 100 } })
+    mountEditor(root, store)
+    expect(root.querySelector<HTMLInputElement>('input[aria-label="Logo size"]')!.max).toBe('100')
   })
 })

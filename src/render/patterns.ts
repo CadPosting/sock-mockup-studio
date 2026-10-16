@@ -152,9 +152,11 @@ export function gripDots(m: Mockup, index: number): SVGElement | null {
 
 /**
  * Repeat motif (StFX "X"): the logo or letter scattered on a grid with every other row offset,
- * on the chosen views. Drawn with the placements so it's clipped to the sock and never mirrored.
+ * on the chosen views. Drawn inside the sock, under the cuff, band, heel and toe, so like Peter's
+ * StFX sheet it only shows on the leg and foot. `flipped`: the view is the mirrored crew Right,
+ * so each copy is flipped back and still reads the right way round.
  */
-export function motif(m: Mockup, index: number): SVGGElement | null {
+export function motif(m: Mockup, index: number, flipped = false): SVGGElement | null {
   const mo = m.patterns.motif
   if (!mo || !mo.views.includes(index)) return null
   const profile = m.views[index].kind === 'left' || m.views[index].kind === 'right'
@@ -167,7 +169,7 @@ export function motif(m: Mockup, index: number): SVGGElement | null {
       const node = content(m, { id: 'motif', view: index, content: mo.content, x, y, scale, rotation: 0, clip: true })
       if (!node) return null
       node.removeAttribute('data-field') // motif copies aren't edited one by one
-      const item = el('g', { transform: `translate(${x} ${y})` })
+      const item = el('g', { transform: flipped ? `translate(${x} ${y}) scale(-1 1)` : `translate(${x} ${y})` })
       item.append(node)
       g.append(item)
     }

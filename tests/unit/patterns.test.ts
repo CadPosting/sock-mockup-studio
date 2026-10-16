@@ -66,6 +66,17 @@ describe('grip dots and motif', () => {
     expect(views).toEqual(['0', '3'])
     let node: Element | null = svg.querySelector('[data-view="3"] [data-part="motif"] text')
     expect(node!.hasAttribute('data-field')).toBe(false)
-    for (; node; node = node.parentElement) expect(node.getAttribute('transform') ?? '').not.toContain('scale')
+    // On the mirrored crew Right the sock group is flipped and each motif copy flips back:
+    // an even number of horizontal flips above the glyph means it reads the right way round.
+    let flips = 0
+    for (; node; node = node.parentElement) flips += ((node.getAttribute('transform') ?? '').match(/scale\(-1 1\)/g) ?? []).length
+    expect(flips % 2).toBe(0)
+  })
+
+  it('the motif sits under the cuff, heel and toe (only on leg and foot, like StFX)', () => {
+    const m = STYLE_PRESETS['dress-crew'].make()
+    m.patterns.motif = { content: { type: 'text', text: 'X', font: 'baskerville', color: c('#ffffff') }, views: [1], size: 30, spacing: 80 }
+    const order = [...render(m).querySelectorAll('[data-view="1"] [data-part="motif"], [data-view="1"] [data-zone]')].map((n) => n.getAttribute('data-zone') ?? 'motif')
+    for (const z of ['cuff', 'heel', 'toe']) expect(order.lastIndexOf(z)).toBeGreaterThan(order.indexOf('motif'))
   })
 })

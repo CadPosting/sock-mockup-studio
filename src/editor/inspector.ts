@@ -7,6 +7,7 @@
 import { STYLE_PRESETS, type StylePresetId, VIEW_PRESETS, type ViewPresetId } from '../model/defaults'
 import type { Mockup } from '../model/types'
 import type { Store } from '../store/store'
+import { logoRect, maxLogoHeight } from '../render/header'
 import { h } from './dom'
 import { headerPanel } from './header-panel'
 import { gripPanel, motifPanel, placementPanel, zonePanel } from './panels'
@@ -52,6 +53,27 @@ export function createInspector(
   const removeLogo = h('button', { type: 'button', class: 'btn btn--danger' }, 'Remove')
   removeLogo.addEventListener('click', () => store.dispatch({ type: 'removeLogo' }))
   const logoField = h('div', { class: 'logo-field' }, upload, logoName, removeLogo)
+  // Logo size = its drawn height on the sheet. One drag is one undo step.
+  const logoSize = h('input', { type: 'range', min: '20', max: '180', step: '1', 'aria-label': 'Logo size' })
+  let sizing = false
+  logoSize.addEventListener('pointerdown', () => {
+    sizing = true
+    store.beginGesture()
+  })
+  logoSize.addEventListener('input', () => store.dispatch({ type: 'setHeader', patch: { logoHeight: Number(logoSize.value) } }))
+  // End the drag's undo group on any release, even one with no change (no `change` event then),
+  // and show the size the logo really got (a wide logo is capped by width).
+  const endSize = () => {
+    sizing = false
+    store.endGesture()
+    const r = logoRect(store.get())
+    if (r) logoSize.value = String(Math.round(r.height))
+  }
+  logoSize.addEventListener('change', endSize)
+  logoSize.addEventListener('blur', endSize)
+  window.addEventListener('pointerup', () => sizing && endSize(), { signal })
+  window.addEventListener('pointercancel', () => sizing && endSize(), { signal })
+  const logoSizeField = h('label', { class: 'field' }, h('span', { class: 'field__label' }, 'Logo size'), logoSize)
 
   const client = h('input', { class: 'input', type: 'text', placeholder: 'e.g. Mount Allison University', maxlength: '200' })
   client.addEventListener('input', () => store.dispatch({ type: 'setHeader', patch: { client: client.value } }))
@@ -113,6 +135,7 @@ export function createInspector(
     field('Sock style', style),
     field('Client', client),
     field('Logo', logoField),
+    logoSizeField,
     field('Header', editHeader),
     field('Sock template', template),
     field('Views', views),
@@ -131,6 +154,10 @@ export function createInspector(
     logoName.textContent = logo ? logo.name : 'PNG, JPG or SVG'
     upload.textContent = logo ? 'Replace' : 'Upload logo'
     removeLogo.hidden = !logo
+    logoSizeField.hidden = !logo
+    const rect = logoRect(m)
+    logoSize.max = String(maxLogoHeight(m)) // only offer sizes the logo can actually reach
+    if (rect && document.activeElement !== logoSize) logoSize.value = String(Math.round(rect.height))
     views.value = currentViewSet(m)
     for (const [c, b] of pageButtons) b.setAttribute('aria-checked', String(m.pageColor === c))
     for (const [n, b] of stripes.buttons) b.setAttribute('aria-checked', String(m.stripes === n))
