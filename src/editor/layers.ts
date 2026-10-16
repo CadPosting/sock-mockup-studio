@@ -1,11 +1,11 @@
 // Layers panel (design brief B2): what's on the sheet, grouped as Zones, Logos, Text, Patterns.
-// Rows become clickable selections in task 10; for now the panel is a live outline.
+// Clicking a row selects that thing, the same as clicking it on the sheet.
 
 import { ZONE_IDS } from '../model/schema'
 import type { Mockup, ZoneId } from '../model/types'
 import { h } from './dom'
 
-const ZONE_NAMES: Record<ZoneId, string> = {
+export const ZONE_NAMES: Record<ZoneId, string> = {
   cuff: 'Cuff',
   stripe1: 'Cuff stripe 1',
   stripe2: 'Cuff stripe 2',
@@ -38,21 +38,21 @@ function section(title: string, rows: Node[], empty: string) {
   )
 }
 
-function row(label: string, swatch?: string, note?: string) {
+function row(label: string, swatch?: string, note?: string, select?: string) {
   const sw = h('span', { class: 'layers__swatch' })
   if (swatch) sw.style.background = swatch
   return h(
     'li',
-    { class: 'layers__row' },
+    { class: select ? 'layers__row layers__row--button' : 'layers__row', 'data-select': select, tabindex: select ? '0' : undefined },
     swatch ? sw : null,
     h('span', { class: 'layers__label' }, label),
     note ? h('span', { class: 'layers__note' }, note) : null,
   )
 }
 
-export function renderLayers(m: Mockup): HTMLElement {
+export function renderLayers(m: Mockup, selected: string | null): HTMLElement {
   const patterned = new Map(m.zoneFills.map((f) => [f.zone, f.pattern.type]))
-  const zones = visibleZones(m).map((z) => row(ZONE_NAMES[z], m.zones[z].hex, patterned.get(z)))
+  const zones = visibleZones(m).map((z) => row(ZONE_NAMES[z], m.zones[z].hex, patterned.get(z), `zone:${z}`))
 
   const viewName = (i: number) => m.views[i].label || m.views[i].kind
   const logos = m.placements
@@ -63,10 +63,11 @@ export function renderLayers(m: Mockup): HTMLElement {
     .map((p) => row((p.content as { text: string }).text || 'Text', undefined, viewName(p.view)))
 
   const patterns = [
-    m.patterns.gripDots ? row('Grip dots', m.patterns.gripDots.color.hex) : null,
-    m.patterns.motif ? row('Repeat motif') : null,
+    m.patterns.gripDots ? row('Grip dots', m.patterns.gripDots.color.hex, undefined, 'gripDots') : null,
+    m.patterns.motif ? row('Repeat motif', undefined, undefined, 'motif') : null,
   ].filter((n): n is HTMLLIElement => n !== null)
 
+  for (const r of [...zones, ...patterns]) if (r.dataset.select === selected) r.classList.add('layers__row--selected')
   return h(
     'div',
     { class: 'layers' },

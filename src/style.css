@@ -314,3 +314,133 @@ body {
   padding: 0 6px;
   color: var(--muted);
 }
+
+/* ---------- sheet interaction (B5) ---------- */
+/* These classes are added by the editor after render(); export never sees page CSS. */
+
+.sheet [data-zone] {
+  cursor: pointer;
+}
+
+.sheet .is-hover {
+  stroke: var(--accent);
+  stroke-opacity: 0.6;
+  stroke-width: 5px;
+  vector-effect: non-scaling-stroke;
+}
+
+.sheet .is-selected {
+  stroke: var(--accent);
+  stroke-opacity: 1;
+  stroke-width: 5px;
+  vector-effect: non-scaling-stroke;
+}
+
+/* ---------- inspector panels ---------- */
+
+.panel-section > .btn--danger {
+  margin-top: 8px;
+}
+
+.hint--quiet {
+  background: transparent;
+  color: var(--muted);
+  padding: 0;
+  margin: -6px 0 12px;
+}
+
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.swatch {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid rgb(0 0 0 / 0.15);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.swatch[aria-selected='true'] {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.color-row,
+.num-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.color-native {
+  width: 36px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: none;
+  cursor: pointer;
+  flex: none;
+}
+
+.input--hex {
+  font-family: ui-monospace, monospace;
+  text-transform: lowercase;
+}
+
+.input--invalid {
+  border-color: var(--danger);
+}
+
+.num-row input[type='range'] {
+  flex: 1;
+  accent-color: var(--accent);
+}
+
+.input--num {
+  width: 72px;
+  flex: none;
+}
+
+.checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.check {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.btn--danger {
+  color: var(--danger);
+}
+
+.btn--danger:hover:not(:disabled) {
+  background: #fef2f2;
+}
+
+/* ---------- selectable layer rows ---------- */
+
+.layers__row--button {
+  cursor: pointer;
+  transition: background-color 0.12s;
+}
+
+.layers__row--button:hover {
+  background: var(--accent-soft);
+}
+
+.layers__row--selected {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
