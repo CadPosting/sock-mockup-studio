@@ -313,6 +313,15 @@ export function mountEditor(root: HTMLElement, store: Store) {
   // (the press and release targets no longer share a parent in the page). `click` remains as a
   // fallback for clicks that don't come with pointer events; `handledUp` stops a double handling.
   let handledUp = false
+  // A press released (or cancelled) anywhere ends here too, so stale press state can't swallow
+  // a later click. Deferred so the click belonging to this same press still sees it.
+  const endPress = () =>
+    setTimeout(() => {
+      pressedPlacement = false
+      pressed = null
+    })
+  window.addEventListener('pointerup', endPress)
+  window.addEventListener('pointercancel', endPress)
   svgHolder.addEventListener('pointerup', (e) => {
     if (e.button !== 0 || !pressed) return
     handledUp = true
@@ -325,7 +334,11 @@ export function mountEditor(root: HTMLElement, store: Store) {
   })
   function activate(e: Event) {
     // The re-render during a drag means the click lands on an ancestor, not the logo; ignore it.
-    if (pressedPlacement) return
+    if (pressedPlacement) {
+      pressedPlacement = false
+      pressed = null
+      return
+    }
     const hit = pressed ?? hitOf(e.target as Element)
     pressed = null
     // Click any header text or view label to type over it in place (task 13b).

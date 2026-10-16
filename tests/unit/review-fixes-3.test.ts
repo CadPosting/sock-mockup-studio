@@ -163,3 +163,40 @@ describe('sheet press when the browser sends no click (Chrome after a mid-press 
     expect(root.querySelector('.inspector > div:not([hidden]) .inspector__title')!.textContent).toBe('Heel')
   })
 })
+
+describe('round 5 (Codex review of task 16)', () => {
+  it('stroke-drawn bands (profile stripes, sole edge) are always a flat colour, so the PDF matches', () => {
+    const store = createStore(STYLE_PRESETS.crew.make())
+    store.dispatch({ type: 'setStripes', stripes: 2 })
+    store.dispatch({ type: 'setZonePattern', zone: 'leg', pattern: { type: 'checks', color: { hex: '#000000' }, size: 8 } })
+    store.dispatch({ type: 'setZoneColor', zone: 'sole', color: { hex: '#222222' } })
+    store.dispatch({ type: 'setZonePattern', zone: 'sole', pattern: { type: 'dots', color: { hex: '#ffffff' }, size: 3, spacing: 9, style: 'solid' } })
+    const strokes = [...render(store.get()).querySelectorAll('[data-stroke]')]
+    expect(strokes.length).toBeGreaterThan(0)
+    for (const s of strokes) expect(s.getAttribute('stroke')).toMatch(/^#[0-9a-f]{6}$/)
+  })
+
+  it('cuff stripes offer no pattern choice (too narrow to read, and the PDF could not draw it)', () => {
+    const root = document.createElement('div')
+    document.body.replaceChildren(root)
+    const store = createStore(STYLE_PRESETS.crew.make())
+    store.dispatch({ type: 'setStripes', stripes: 1 })
+    mountEditor(root, store)
+    root.querySelector('.sheet [data-view="0"] [data-zone="stripe1"]')!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    expect(root.querySelector('.panel--inspector select[aria-label="Pattern"]')).toBeNull()
+  })
+
+  it('after pressing a logo, a later plain click on empty sheet still deselects', async () => {
+    const root = document.createElement('div')
+    document.body.replaceChildren(root)
+    const store = createStore(STYLE_PRESETS.crew.make())
+    mountEditor(root, store)
+    ;[...root.querySelectorAll('button')].find((b) => b.textContent === '+ Text')!.click()
+    const id = store.get().placements[0].id
+    root.querySelector(`.sheet [data-placement="${id}"] text`)!.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }))
+    window.dispatchEvent(new MouseEvent('pointerup'))
+    await new Promise((r) => setTimeout(r, 0)) // a later click, not the press's own
+    root.querySelector('.sheet__svg svg')!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    expect(root.querySelector('.overlay__box')).toBeNull()
+  })
+})

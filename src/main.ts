@@ -1,6 +1,6 @@
 import './style.css'
 import { mountEditor } from './editor/shell'
-import { loadEditorFonts } from './io/fonts'
+import { loadEditorFonts, useArimoMetrics } from './io/fonts'
 import { STYLE_PRESETS } from './model/defaults'
 import { createAutosave, loadDraft } from './store/autosave'
 import { idbStorage } from './store/idb'
@@ -9,8 +9,14 @@ import { createStore } from './store/store'
 // Boot: load the autosaved draft (if any) behind the start dialog, then show the dialog so the
 // user picks Resume, a new style, or a file (app-flow "Start dialog").
 async function boot() {
-  // Show the sheet in the same bundled fonts the export uses. Not awaited: the editor opens at once.
-  void loadEditorFonts().catch(() => {})
+  // Wait for the bundled fonts before the first render, so the sheet on screen and every export
+  // measure text (line wraps, underlines) the same way. Local files, so this is quick; if they
+  // fail or take over 1.5 s the tool opens anyway and measures with its built-in estimate.
+  const loaded = await Promise.race([
+    loadEditorFonts().then(() => true, () => false),
+    new Promise<boolean>((r) => setTimeout(() => r(false), 1500)),
+  ])
+  if (loaded) useArimoMetrics() // decided once, before the first render; never switches later
   let damaged = false
   const draft = await loadDraft(idbStorage, undefined, () => (damaged = true))
   const store = createStore(draft?.mockup ?? STYLE_PRESETS.crew.make())

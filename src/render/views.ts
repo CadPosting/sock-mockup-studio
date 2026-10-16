@@ -143,7 +143,9 @@ export function renderView(
             d: e.d,
             ...(e.transform ? { transform: e.transform } : {}),
             fill: 'none',
-            stroke: zoneFill(m, zone),
+            // Flat colour, never a pattern: svg2pdf can't stroke with a pattern, and the PDF
+            // must match the screen. These bands are too narrow for a pattern to read anyway.
+            stroke: m.zones[zone].hex,
             'stroke-width': distance * 2,
             'stroke-linejoin': 'round',
             'data-zone': zone,
@@ -164,7 +166,7 @@ export function renderView(
       el('path', {
         d: soleEdge.outline,
         fill: 'none',
-        stroke: zoneFill(m, 'sole'),
+        stroke: m.zones.sole.hex, // flat colour, see the profile stripes above
         'stroke-width': SOLE_EDGE * 2,
         'clip-path': `url(#${soleClipId})`,
         'data-zone': 'sole',

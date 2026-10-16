@@ -26,6 +26,17 @@ export function facesFor(m: Mockup): Face[] {
   return [...ARIMO, ...(used.has('oswald') ? [OSWALD] : []), ...(used.has('baskerville') ? [BASKERVILLE] : [])]
 }
 
+let arimoMetrics = false
+/**
+ * True once our Arimo files loaded before the editor's first render. Text measuring uses the real
+ * font only then, and the setting never changes during a session, so the sheet and every export
+ * wrap the same way. (document.fonts.check() isn't enough: it can pass with no matching face.)
+ */
+export const isArimoLoaded = () => arimoMetrics
+export const useArimoMetrics = () => {
+  arimoMetrics = true
+}
+
 /** Make the fonts available to the editor page (same-origin files, allowed by font-src 'self'). */
 export async function loadEditorFonts(): Promise<void> {
   if (typeof FontFace === 'undefined') return

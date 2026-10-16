@@ -4,6 +4,7 @@
 // and palette table. The sizes in the first draft of the design brief were ~20% too small.
 
 import type { Mockup, SpecRow } from '../model/types'
+import { isArimoLoaded } from '../io/fonts'
 import { hexToCmyk, hexToRgb } from '../util/color'
 import { el } from './dom'
 
@@ -58,8 +59,9 @@ export function approxWidth(s: string, size: number): number {
 let measureCtx: CanvasRenderingContext2D | null | undefined
 
 /**
- * Width of a string in Arimo. In a browser with Arimo loaded this is the real measured width;
- * elsewhere (tests, or before the font has loaded) it falls back to approxWidth. Used for the
+ * Width of a string in Arimo. In a browser, once our bundled Arimo has loaded, this is the real
+ * measured width; elsewhere (tests, or if the font failed to load) it's approxWidth. The editor
+ * waits for the fonts before its first render, so screen and exports always measure the same. Used for the
  * label underlines and 2-column wrapping, where a few units off would show.
  */
 export function textWidth(s: string, size: number, weight = 400): number {
@@ -71,7 +73,7 @@ export function textWidth(s: string, size: number, weight = 400): number {
     }
   }
   const font = `${weight} ${size}px Arimo`
-  if (!measureCtx || typeof document === 'undefined' || !document.fonts?.check(font)) return approxWidth(s, size)
+  if (!measureCtx || !isArimoLoaded()) return approxWidth(s, size)
   measureCtx.font = font
   return measureCtx.measureText(s).width
 }

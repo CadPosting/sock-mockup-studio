@@ -36,6 +36,31 @@ function familiesUsed(svg: SVGSVGElement): Set<string> {
   return out
 }
 
+/**
+ * svg2pdf ignores an embedded SVG logo's own <style> rules (a class-styled red shape comes out
+ * black), so for the PDF only, SVG logos are drawn to a PNG at 4x their size on the sheet.
+ * Everything else in the PDF stays vector. Browser only.
+ */
+async function rasterizeSvgImages(svg: SVGSVGElement, scale = 4): Promise<void> {
+  for (const img of svg.querySelectorAll('image')) {
+    const href = img.getAttribute('href') ?? ''
+    if (!href.startsWith('data:image/svg+xml')) continue
+    const boxW = Number(img.getAttribute('width'))
+    const boxH = Number(img.getAttribute('height'))
+    const src = new Image()
+    src.src = href
+    await src.decode()
+    const ratio = (src.naturalWidth || boxW) / (src.naturalHeight || boxH)
+    // The image is drawn "contain" in its box, so rasterize at the size it actually occupies.
+    const [w, h] = ratio >= boxW / boxH ? [boxW, boxW / ratio] : [boxH * ratio, boxH]
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(w * scale))
+    canvas.height = Math.max(1, Math.round(h * scale))
+    canvas.getContext('2d')!.drawImage(src, 0, 0, canvas.width, canvas.height)
+    img.setAttribute('href', canvas.toDataURL('image/png'))
+  }
+}
+
 export async function exportPdf(m: Mockup): Promise<Blob> {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: [SHEET.width, SHEET.height], compress: true })
   for (const face of facesFor(m)) {
@@ -50,6 +75,7 @@ export async function exportPdf(m: Mockup): Promise<Blob> {
   const missing = [...familiesUsed(svg)].filter((f) => !registered.has(f))
   if (missing.length) throw new Error(`font not available for PDF: ${missing.join(', ')}`)
 
+  await rasterizeSvgImages(svg)
   // svg2pdf reads computed styles, so the SVG must be in the document while it's converted.
   const holder = document.createElement('div')
   holder.style.cssText = 'position:fixed;left:-10000px;top:0;width:1024px;height:768px;visibility:hidden'

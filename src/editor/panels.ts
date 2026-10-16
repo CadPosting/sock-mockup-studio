@@ -129,8 +129,11 @@ export function zonePanel(store: Store, zone: ZoneId): HTMLElement {
         : 'Changes this part on every view.',
     ),
     colorField(store, pattern ? 'Base colour' : 'Colour', color, (c) => store.dispatch({ type: 'setZoneColor', zone, color: c }), { factoryRef: true }),
-    h('label', { class: 'field' }, h('span', { class: 'field__label' }, 'Pattern'), patternSelect),
-    ...(pattern ? patternControls(store, zone, pattern) : []),
+    // Cuff stripes are too narrow for a pattern to read (and on the side views they're stroked,
+    // which the PDF can't fill with one), so they're flat colour only.
+    ...(zone === 'stripe1' || zone === 'stripe2'
+      ? []
+      : [h('label', { class: 'field' }, h('span', { class: 'field__label' }, 'Pattern'), patternSelect), ...(pattern ? patternControls(store, zone, pattern) : [])]),
   )
 }
 
