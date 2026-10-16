@@ -52,6 +52,9 @@ function segmented<T>(label: string, options: [T, string][], value: T, onPick: (
 function tagControls(store: Store, header: Header): Node[] {
   const t = header.tag
   const setTag = (tag: Header['tag']) => store.dispatch({ type: 'setHeader', patch: { tag } })
+  // Read the tag at the moment of the edit, not when the panel was built: moving from one line's
+  // input straight to the other doesn't rebuild the panel, so a stale copy would undo line 1.
+  const codeNow = () => store.get().header.tag as Extract<Header['tag'], { mode: 'code' }>
   const mode = segmented('Tag', [['sample', 'SAMPLE n'], ['code', 'Style code']], t.mode, (m) =>
     setTag(m === 'sample' ? { mode: 'sample', n: 1 } : { mode: 'code', line1: 'HIP-CSC-05', line2: 'Dress Crew' }),
   )
@@ -67,8 +70,8 @@ function tagControls(store: Store, header: Header): Node[] {
     mode,
     field(
       'Style code (2 lines)',
-      textInput(store, t.line1, (v) => setTag({ ...t, line1: v }), { 'aria-label': 'Style code line 1', maxlength: '200' }),
-      textInput(store, t.line2, (v) => setTag({ ...t, line2: v }), { 'aria-label': 'Style code line 2', maxlength: '200' }),
+      textInput(store, t.line1, (v) => setTag({ ...codeNow(), line1: v }), { 'aria-label': 'Style code line 1', maxlength: '200' }),
+      textInput(store, t.line2, (v) => setTag({ ...codeNow(), line2: v }), { 'aria-label': 'Style code line 2', maxlength: '200' }),
     ),
   ]
 }
@@ -123,13 +126,14 @@ function specRow(store: Store, row: SpecRow, index: number, count: number): HTML
 function paletteControls(store: Store, header: Header): Node[] {
   const pal = header.palette
   const setPal = (palette: Header['palette']) => store.dispatch({ type: 'setHeader', patch: { palette } })
+  const palNow = () => store.get().header.palette // fresh at edit time (see codeNow above)
   const out: Node[] = [segmented('Brand palette table', [[true, 'Show'], [false, 'Hide']], pal.show, (show) => setPal({ ...pal, show }))]
   if (!pal.show) return out
 
   const list = h('ul', { class: 'pal' })
   pal.rows.forEach((row, i) => {
     const setRow = (patch: Partial<Header['palette']['rows'][number]>) =>
-      setPal({ ...pal, rows: pal.rows.map((r, j) => (j === i ? { ...r, ...patch } : r)) })
+      setPal({ ...palNow(), rows: palNow().rows.map((r, j) => (j === i ? { ...r, ...patch } : r)) })
     const sw = h('span', { class: 'pal__swatch' })
     sw.style.background = row.hex
     const hex = h('input', { class: 'input input--hex', type: 'text', value: row.hex, maxlength: '7', 'aria-label': 'Palette hex' })

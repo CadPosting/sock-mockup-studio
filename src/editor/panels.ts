@@ -66,32 +66,35 @@ function defaultPattern(type: ZonePattern['type'], base: string): ZonePattern {
 }
 
 function patternControls(store: Store, zone: ZoneId, p: ZonePattern): Node[] {
-  const set = (next: ZonePattern) => store.dispatch({ type: 'setZonePattern', zone, pattern: next })
+  // Merge each edit onto the pattern as it is now, not as it was when the panel was built
+  // (editing two inputs in a row doesn't rebuild the panel in between).
+  const now = () => (store.get().zoneFills.find((f) => f.zone === zone)?.pattern ?? p) as typeof p
+  const patch = (part: Record<string, unknown>) => store.dispatch({ type: 'setZonePattern', zone, pattern: { ...now(), ...part } as ZonePattern })
   const num = (label: string, key: string, min: number, max: number, step = 1) =>
-    numberField(store, label, (p as unknown as Record<string, number>)[key], min, max, step, (v) => set({ ...p, [key]: v } as ZonePattern))
+    numberField(store, label, (p as unknown as Record<string, number>)[key], min, max, step, (v) => patch({ [key]: v }))
   switch (p.type) {
     case 'stripes':
-      return [colorField(store, 'Stripe colour', p.color, (c) => set({ ...p, color: c })), num('Stripe width', 'width', 2, 80), num('Gap', 'gap', 2, 80), num('Angle', 'angle', -90, 90, 5)]
+      return [colorField(store, 'Stripe colour', p.color, (c) => patch({ color: c })), num('Stripe width', 'width', 2, 80), num('Gap', 'gap', 2, 80), num('Angle', 'angle', -90, 90, 5)]
     case 'checks':
-      return [colorField(store, 'Check colour', p.color, (c) => set({ ...p, color: c })), num('Square size', 'size', 4, 80)]
+      return [colorField(store, 'Check colour', p.color, (c) => patch({ color: c })), num('Square size', 'size', 4, 80)]
     case 'dots':
       return [
-        colorField(store, 'Dot colour', p.color, (c) => set({ ...p, color: c })),
-        segmented('Dot style', [['solid', 'Solid'], ['outline', 'Outline']], p.style, (style) => set({ ...p, style })),
+        colorField(store, 'Dot colour', p.color, (c) => patch({ color: c })),
+        segmented('Dot style', [['solid', 'Solid'], ['outline', 'Outline']], p.style, (style) => patch({ style })),
         num('Dot size', 'size', 1, 30),
         num('Spacing', 'spacing', 4, 60),
       ]
     case 'chevrons':
-      return [colorField(store, 'Chevron colour', p.color, (c) => set({ ...p, color: c })), num('Size', 'size', 6, 80)]
+      return [colorField(store, 'Chevron colour', p.color, (c) => patch({ color: c })), num('Size', 'size', 6, 80)]
     case 'camo':
       return [
-        ...p.colors.map((c, i) => colorField(store, `Camo colour ${i + 1}`, c, (nc) => set({ ...p, colors: p.colors.map((x, j) => (j === i ? nc : x)) }))),
+        ...p.colors.map((c, i) => colorField(store, `Camo colour ${i + 1}`, c, (nc) => patch({ colors: (now() as Extract<ZonePattern, { type: 'camo' }>).colors.map((x, j) => (j === i ? nc : x)) }))),
         num('Blob size', 'size', 20, 200, 5),
       ]
     case 'argyle':
       return [
-        colorField(store, 'Diamond colour', p.color, (c) => set({ ...p, color: c })),
-        colorField(store, 'Line colour', p.line, (c) => set({ ...p, line: c })),
+        colorField(store, 'Diamond colour', p.color, (c) => patch({ color: c })),
+        colorField(store, 'Line colour', p.line, (c) => patch({ line: c })),
         num('Diamond size', 'size', 10, 150),
       ]
   }
@@ -130,7 +133,7 @@ export const DEFAULT_MOTIF: Motif = { content: { type: 'text', text: 'X', font: 
 export function gripPanel(store: Store, selection: SelectionStore): HTMLElement {
   const g = store.get().patterns.gripDots
   if (!g) return h('div')
-  const set = (patch: Partial<GripDots>) => store.dispatch({ type: 'setGripDots', gripDots: { ...g, ...patch } })
+  const set = (patch: Partial<GripDots>) => store.dispatch({ type: 'setGripDots', gripDots: { ...(store.get().patterns.gripDots ?? g), ...patch } })
   const remove = h('button', { type: 'button', class: 'btn btn--danger' }, 'Remove grip dots')
   remove.addEventListener('click', () => {
     store.dispatch({ type: 'setGripDots', gripDots: null })
@@ -153,17 +156,18 @@ export function motifPanel(store: Store, selection: SelectionStore): HTMLElement
   const m = store.get()
   const mo = m.patterns.motif
   if (!mo) return h('div')
-  const set = (patch: Partial<Motif>) => store.dispatch({ type: 'setMotif', motif: { ...mo, ...patch } })
+  const set = (patch: Partial<Motif>) => store.dispatch({ type: 'setMotif', motif: { ...(store.get().patterns.motif ?? mo), ...patch } })
+  const textNow = () => (store.get().patterns.motif ?? mo).content as Extract<Motif['content'], { type: 'text' }>
   const parts: Node[] = [h('h2', { class: 'inspector__title' }, 'Repeat motif')]
 
   if (mo.content.type === 'text') {
     const content = mo.content
     const text = h('input', { class: 'input', type: 'text', value: content.text, maxlength: '20', 'aria-label': 'Motif text' })
-    text.addEventListener('change', () => set({ content: { ...content, text: text.value } }))
+    text.addEventListener('change', () => set({ content: { ...textNow(), text: text.value } }))
     parts.push(
       h('label', { class: 'field' }, h('span', { class: 'field__label' }, 'Letter or word'), text),
-      segmented('Font', [['arimo', 'Arimo Bold'], ['oswald', 'Oswald'], ['baskerville', 'Baskerville']], content.font, (font) => set({ content: { ...content, font } })),
-      colorField(store, 'Colour', content.color, (color) => set({ content: { ...content, color } }), { factoryRef: true }),
+      segmented('Font', [['arimo', 'Arimo Bold'], ['oswald', 'Oswald'], ['baskerville', 'Baskerville']], content.font, (font) => set({ content: { ...textNow(), font } })),
+      colorField(store, 'Colour', content.color, (color) => set({ content: { ...textNow(), color } }), { factoryRef: true }),
     )
   }
 
@@ -198,16 +202,18 @@ export function placementPanel(store: Store, selection: SelectionStore, id: stri
 
   if (p.content.type === 'text') {
     const content = p.content
+    // Fresh content at edit time (typing then picking a colour must keep the typed text).
+    const contentNow = () => (store.get().placements.find((q) => q.id === id)?.content ?? content) as typeof content
     parts.push(h('h2', { class: 'inspector__title' }, 'Text'))
     const text = h('input', { class: 'input', type: 'text', value: content.text, maxlength: '200', 'aria-label': 'Text' })
     // Typing is one undo step, like the client name.
     text.addEventListener('focus', () => store.beginGesture())
-    text.addEventListener('input', () => set({ content: { ...content, text: text.value } }))
+    text.addEventListener('input', () => set({ content: { ...contentNow(), text: text.value } }))
     text.addEventListener('blur', () => store.endGesture())
     parts.push(
       h('label', { class: 'field' }, h('span', { class: 'field__label' }, 'Text'), text),
-      segmented('Font', [['arimo', 'Arimo Bold'], ['oswald', 'Oswald'], ['baskerville', 'Baskerville']], content.font, (font) => set({ content: { ...content, font } })),
-      colorField(store, 'Colour', content.color, (color) => set({ content: { ...content, color } }), { factoryRef: true }),
+      segmented('Font', [['arimo', 'Arimo Bold'], ['oswald', 'Oswald'], ['baskerville', 'Baskerville']], content.font, (font) => set({ content: { ...contentNow(), font } })),
+      colorField(store, 'Colour', content.color, (color) => set({ content: { ...contentNow(), color } }), { factoryRef: true }),
     )
   } else {
     const asset = m.assets[p.content.assetId]

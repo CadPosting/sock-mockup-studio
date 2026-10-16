@@ -44,6 +44,13 @@ export function colorField(
   onChange: (c: ColorRef) => void,
   opts: { factoryRef?: boolean } = {},
 ): HTMLElement {
+  // Track the latest value locally: hex then factory ref (or the reverse) are edited without the
+  // panel rebuilding in between, so the value it was built with goes stale.
+  let current = value
+  const emit = (next: ColorRef) => {
+    current = next
+    onChange(next)
+  }
   const row = h('div', { class: 'swatches', role: 'listbox', 'aria-label': `${label} swatches` })
   for (const hex of swatches(store.get())) {
     const b = h('button', {
@@ -55,7 +62,7 @@ export function colorField(
       'aria-selected': String(hex === value.hex.toLowerCase()),
     })
     b.style.background = hex
-    b.addEventListener('click', () => onChange({ ...value, hex }))
+    b.addEventListener('click', () => emit({ ...current, hex }))
     row.append(b)
   }
 
@@ -63,14 +70,14 @@ export function colorField(
   hexInput.addEventListener('change', () => {
     const hex = normalizeHex(hexInput.value)
     hexInput.classList.toggle('input--invalid', !hex)
-    if (hex) onChange({ ...value, hex })
+    if (hex) emit({ ...current, hex })
   })
 
   const picker = h('input', { class: 'color-native', type: 'color', value: value.hex, 'aria-label': `${label} picker` })
   // The native picker fires `input` continuously while dragging and `change` at the end.
   picker.addEventListener('input', () => {
     store.beginGesture()
-    onChange({ ...value, hex: picker.value })
+    emit({ ...current, hex: picker.value })
   })
   picker.addEventListener('change', () => store.endGesture())
 
@@ -83,8 +90,8 @@ export function colorField(
     const ref = h('input', { class: 'input', type: 'text', value: value.ref ?? '', maxlength: '200', placeholder: 'Factory ref (e.g. Pantone 202C, MRS001)', 'aria-label': `${label} factory reference` })
     ref.addEventListener('change', () => {
       const v = ref.value.trim()
-      const { ref: _old, ...rest } = value
-      onChange(v ? { ...rest, ref: v } : rest)
+      const { ref: _old, ...rest } = current
+      emit(v ? { ...rest, ref: v } : rest)
     })
     parts.push(ref)
   }
