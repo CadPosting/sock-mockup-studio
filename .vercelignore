@@ -1,0 +1,9 @@
+# Never upload client material or local-only files to Vercel (the build only needs the app source).
+docs/
+tests/fixtures/reference/
+.env*
+node_modules/
+dist/
+test-results/
+playwright-report/
+scripts/__pycache__/
