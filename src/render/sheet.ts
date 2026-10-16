@@ -1,4 +1,5 @@
 import type { Mockup } from '../model/types'
+import { renderHeader } from './header'
 import { el, renderView } from './views'
 
 export const SHEET = { width: 1024, height: 768 } // same as the Keynote slide, so PNG measurements carry over 1:1
@@ -11,7 +12,7 @@ const LABEL_X = [118, 354, 595, 855] as const
 
 /**
  * Pure: the same mockup always gives the same SVG. The editor never edits this output;
- * it changes state and calls render() again. Header, placements and patterns come in later tasks.
+ * it changes state and calls render() again. Placements and patterns come in later tasks.
  */
 export function render(m: Mockup): SVGSVGElement {
   const svg = el('svg', {
@@ -20,10 +21,11 @@ export function render(m: Mockup): SVGSVGElement {
     width: SHEET.width,
     height: SHEET.height,
   })
-  svg.append(el('rect', { width: SHEET.width, height: SHEET.height, fill: PAGE_COLORS[m.pageColor] }))
+  svg.append(el('rect', { width: SHEET.width, height: SHEET.height, fill: PAGE_COLORS[m.pageColor] }), renderHeader(m))
 
   m.views.forEach((view, i) => {
     const label = el('text', {
+      'data-part': 'label',
       x: LABEL_X[i],
       y: LABEL_Y[m.template],
       'text-anchor': 'middle',

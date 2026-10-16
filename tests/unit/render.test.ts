@@ -12,7 +12,7 @@ describe('render', () => {
     const svg = render(STYLE_PRESETS.crew.make())
     expect(svg.getAttribute('viewBox')).toBe('0 0 1024 768')
     expect(svg.querySelectorAll('[data-view]')).toHaveLength(4)
-    expect([...svg.querySelectorAll('text')].map((t) => t.textContent)).toEqual(['Front', 'Back', 'Left', 'Right'])
+    expect([...svg.querySelectorAll('[data-part="label"]')].map((t) => t.textContent)).toEqual(['Front', 'Back', 'Left', 'Right'])
   })
 
   it('changing zones.heel recolours the heel in back, left and right, not front', () => {
@@ -48,6 +48,6 @@ describe('render', () => {
     const svg = render(m)
     expect(svg.querySelector('[data-view="3"]')!.getAttribute('transform')).toContain('scale(-1 1)')
     expect(svg.querySelector('img')).toBeNull()
-    expect(svg.querySelectorAll('text')[3].textContent).toBe('<img src=x onerror=alert(1)>')
+    expect(svg.querySelectorAll('[data-part="label"]')[3].textContent).toBe('<img src=x onerror=alert(1)>')
   })
 })
