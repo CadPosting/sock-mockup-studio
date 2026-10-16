@@ -1,6 +1,6 @@
 import type { Mockup, ViewKind, ZoneId } from '../model/types'
-import { FLAT_WIDTH, flatView } from '../templates/flat'
-import { PROFILE_SIZE, PROFILES } from '../templates/profiles.generated'
+import { flatView, HEEL_Y } from '../templates/flat'
+import { PROFILE_SIZE, PROFILES, PROFILES_RIGHT } from '../templates/profiles.generated'
 
 export const SVG_NS = 'http://www.w3.org/2000/svg'
 
@@ -26,11 +26,6 @@ function zonePath(d: string, zone: ZoneId, m: Mockup): SVGPathElement {
 
 const isProfile = (kind: ViewKind) => kind === 'left' || kind === 'right'
 
-/** Horizontal centre of a slot, used to place its label. */
-export function slotCenter(index: number, kind: ViewKind): number {
-  return SLOT_X[index] + (isProfile(kind) ? PROFILE_SIZE.width : FLAT_WIDTH) / 2
-}
-
 /**
  * Draw one view as a <g>. Paint order: base colour fills the whole outline,
  * zones go on top clipped to the outline, then the black outline stroke.
@@ -46,17 +41,19 @@ export function renderView(m: Mockup, index: number): SVGGElement {
 
   if (isProfile(kind)) {
     // ankle-tab has no traced profile of its own yet; it shares the ankle outline.
-    const profile = PROFILES[m.template === 'crew' ? 'crew' : 'ankle']
+    const id = m.template === 'crew' ? 'crew' : 'ankle'
+    // Use a traced Right when Peter drew one (ankle); otherwise mirror the Left inside its slot.
+    const traced = kind === 'right' ? PROFILES_RIGHT[id] : undefined
+    const profile = traced ?? PROFILES[id]
     outline = profile.silhouette
     base = 'leg'
     zones = (['cuff', 'heel', 'toe'] as const).map((zone) => ({ zone, d: profile.zones[zone] }))
-    // Right is the Left profile mirrored inside its own slot.
     transform =
-      kind === 'left'
+      kind === 'left' || traced
         ? `translate(${SLOT_X[index]} ${PROFILE_Y})`
         : `translate(${SLOT_X[index] + PROFILE_SIZE.width} ${PROFILE_Y}) scale(-1 1)`
   } else {
-    const flat = flatView(kind, m.stripes, m.midBand)
+    const flat = flatView(kind, m.stripes, m.midBand, HEEL_Y[m.template])
     outline = flat.outline
     base = flat.base
     zones = flat.zones
@@ -68,20 +65,26 @@ export function renderView(m: Mockup, index: number): SVGGElement {
   clip.append(el('path', { d: outline }))
   g.append(clip)
 
-  const painted = el('g', { 'clip-path': `url(#${clipId})` })
-  painted.append(zonePath(outline, base, m), ...zones.map((z) => zonePath(z.d, z.zone, m)))
-  g.append(painted)
-
-  g.append(
+  const line = (d: string) =>
     el('path', {
-      d: outline,
+      d,
       fill: 'none',
       stroke: OUTLINE.stroke,
       'stroke-width': OUTLINE.width,
       'stroke-linejoin': 'round',
       'vector-effect': 'non-scaling-stroke',
       'pointer-events': 'none',
-    }),
+    })
+
+  // Zone boundaries get the same black line as the outline (design brief A4: cuff line, toe line,
+  // heel ellipse). They're stroked inside the clip, so the parts of a zone that run past the
+  // sock edge never show.
+  const painted = el('g', { 'clip-path': `url(#${clipId})` })
+  painted.append(
+    zonePath(outline, base, m),
+    ...zones.map((z) => zonePath(z.d, z.zone, m)),
+    ...zones.map((z) => line(z.d)),
   )
+  g.append(painted, line(outline))
   return g
 }

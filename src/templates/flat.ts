@@ -44,7 +44,18 @@ function extras(top: number, stripes: 0 | 1 | 2, midBand: boolean): FlatPaths['z
   return out
 }
 
-export function flatView(kind: FlatKind, stripes: 0 | 1 | 2, midBand: boolean): FlatPaths {
+/**
+ * Centre y of the Back view's heel ellipse. Peter places it differently per sock:
+ * measured by overlay on DWU/Impact (ankle), PYC (ankle tab) and REWD/StFX (crew).
+ */
+export const HEEL_Y = { crew: 495, ankle: 425, 'ankle-tab': 455 } as const
+
+export function flatView(
+  kind: FlatKind,
+  stripes: 0 | 1 | 2,
+  midBand: boolean,
+  heelY: number = HEEL_Y.ankle,
+): FlatPaths {
   if (kind === 'sole') {
     // Sole: heel cap on top, sole body, toe cap. No cuff (it's on the other side).
     const outline = `M${L} ${SOLE_TOP}A${CAP_RX} ${CAP_RY} 0 0 1 ${R} ${SOLE_TOP}V${BOTTOM}A${CAP_RX} ${CAP_RY} 0 0 1 ${L} ${BOTTOM}Z`
@@ -62,8 +73,11 @@ export function flatView(kind: FlatKind, stripes: 0 | 1 | 2, midBand: boolean): 
   const outline = `M${L} ${TOP}H${R}V${BOTTOM}A${CAP_RX} ${CAP_RY} 0 0 1 ${L} ${BOTTOM}Z`
   const zones: FlatPaths['zones'] = [{ zone: 'cuff', d: rect(TOP, CUFF_H) }, ...extras(TOP, stripes, midBand)]
   if (kind === 'back') {
-    // Heel ellipse, centred ~354,425 on the sheet = x 88 in the slot.
-    zones.push({ zone: 'heel', d: `M${L} 425A${CAP_RX} ${CAP_RY} 0 1 0 ${R} 425A${CAP_RX} ${CAP_RY} 0 1 0 ${L} 425Z` })
+    // Heel ellipse spans the tube's full width.
+    zones.push({
+      zone: 'heel',
+      d: `M${L} ${heelY}A${CAP_RX} ${CAP_RY} 0 1 0 ${R} ${heelY}A${CAP_RX} ${CAP_RY} 0 1 0 ${L} ${heelY}Z`,
+    })
   }
   zones.push({ zone: 'toe', d: toeCap })
   return { outline, base: 'leg', zones }

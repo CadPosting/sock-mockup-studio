@@ -1,9 +1,13 @@
 import type { Mockup } from '../model/types'
-import { el, renderView, slotCenter } from './views'
+import { el, renderView } from './views'
 
 export const SHEET = { width: 1024, height: 768 } // same as the Keynote slide, so PNG measurements carry over 1:1
-const PAGE_COLORS = { white: '#ffffff', grey: '#f2f2f2' } as const
-const LABEL_Y = 163
+const PAGE_COLORS = { white: '#ffffff', grey: '#ebebeb' } as const // design brief A2
+// View labels sit under the header. Crew sheets put them lower (the crew profile is taller):
+// measured on DWU/Impact/PYC (ankle) and REWD/Nutrio/StFX (crew).
+const LABEL_Y = { crew: 291, ankle: 268, 'ankle-tab': 268 } as const // text baseline
+// Peter centres labels at fixed points, not over each slot's middle (same on all six sheets).
+const LABEL_X = [118, 354, 595, 855] as const
 
 /**
  * Pure: the same mockup always gives the same SVG. The editor never edits this output;
@@ -20,11 +24,11 @@ export function render(m: Mockup): SVGSVGElement {
 
   m.views.forEach((view, i) => {
     const label = el('text', {
-      x: slotCenter(i, view.kind),
-      y: LABEL_Y,
+      x: LABEL_X[i],
+      y: LABEL_Y[m.template],
       'text-anchor': 'middle',
       'font-family': 'Arimo, Arial, Helvetica, sans-serif',
-      'font-size': 16,
+      'font-size': 15,
       fill: '#000000',
     })
     label.textContent = view.label // textContent, never innerHTML: labels are user text
