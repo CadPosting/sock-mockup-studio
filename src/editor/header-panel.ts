@@ -127,7 +127,7 @@ function paletteControls(store: Store, header: Header): Node[] {
   const pal = header.palette
   const setPal = (palette: Header['palette']) => store.dispatch({ type: 'setHeader', patch: { palette } })
   const palNow = () => store.get().header.palette // fresh at edit time (see codeNow above)
-  const out: Node[] = [segmented('Brand palette table', [[true, 'Show'], [false, 'Hide']], pal.show, (show) => setPal({ ...pal, show }))]
+  const out: Node[] = [segmented('Brand palette table', [[true, 'Show'], [false, 'Hide']], pal.show, (show) => setPal({ ...palNow(), show }))]
   if (!pal.show) return out
 
   const list = h('ul', { class: 'pal' })
@@ -143,7 +143,7 @@ function paletteControls(store: Store, header: Header): Node[] {
       if (v) setRow({ hex: v })
     })
     const del = h('button', { type: 'button', class: 'btn btn--icon btn--danger', 'aria-label': 'Remove colour' }, '×')
-    del.addEventListener('click', () => setPal({ ...pal, rows: pal.rows.filter((_, j) => j !== i) }))
+    del.addEventListener('click', () => setPal({ ...palNow(), rows: palNow().rows.filter((_, j) => j !== i) }))
     list.append(
       h(
         'li',
@@ -161,12 +161,12 @@ function paletteControls(store: Store, header: Header): Node[] {
     )
   })
   const add = h('button', { type: 'button', class: 'btn btn--outline', disabled: pal.rows.length >= 8 }, '+ Add colour')
-  add.addEventListener('click', () => setPal({ ...pal, rows: [...pal.rows, { name: '', hex: '#808080', cmyk: '' }] }))
+  add.addEventListener('click', () => setPal({ ...palNow(), rows: [...palNow().rows, { name: '', hex: '#808080', cmyk: '' }] }))
   // One click to start the table from the logo's extracted colours.
   const logo = header.logoAssetId ? store.get().assets[header.logoAssetId] : undefined
   const fromLogo = h('button', { type: 'button', class: 'btn btn--outline', disabled: !logo?.palette?.length }, 'Fill from logo colours')
   fromLogo.addEventListener('click', () =>
-    setPal({ ...pal, rows: (logo?.palette ?? []).slice(0, 8).map((hexValue) => ({ name: '', hex: hexValue, cmyk: '' })) }),
+    setPal({ ...palNow(), rows: (logo?.palette ?? []).slice(0, 8).map((hexValue) => ({ name: '', hex: hexValue, cmyk: '' })) }),
   )
   out.push(list, h('div', { class: 'row-buttons' }, add, fromLogo))
   return out

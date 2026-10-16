@@ -209,5 +209,12 @@ describe('autosave', () => {
     expect(await loadDraft(storage)).toBeNull()
     storage.data.set('draft', 'garbage')
     expect(await loadDraft(storage)).toBeNull()
+    let told = 0
+    storage.data.set('draft', { mockup: { version: 1 }, savedAt: 5 })
+    await loadDraft(storage, 100, () => told++)
+    expect(told).toBe(1) // a damaged draft is reported, not silently dropped
+    storage.data.delete('draft')
+    await loadDraft(storage, 100, () => told++)
+    expect(told).toBe(1) // no draft at all is not an error
   })
 })

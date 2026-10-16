@@ -80,7 +80,7 @@ function logo(m: Mockup): SVGElement | null {
 
 function tag(m: Mockup): SVGElement {
   const t = m.header.tag
-  const g = el('g', { 'data-part': 'tag', 'data-field': 'tag' })
+  const g = el('g', { 'data-part': 'tag' })
   if (t.mode === 'sample') {
     const label = `SAMPLE ${t.n}`
     const w = approxWidth(label, TAG.size) * 1.08 + TAG.padX * 2 // bold runs ~8% wider
@@ -94,14 +94,15 @@ function tag(m: Mockup): SVGElement {
         'font-size': TAG.size,
         'font-weight': 700,
         fill: '#ffffff',
+        'data-field': 'tag:n',
       }),
     )
   } else {
     // Style code (StFX): two centred lines of red text, size 30, no box.
     const cx = 216
     g.append(
-      text(t.line1, { x: cx, y: 162, 'text-anchor': 'middle', 'font-size': 30, fill: SAMPLE_RED }),
-      text(t.line2, { x: cx, y: 195, 'text-anchor': 'middle', 'font-size': 30, fill: SAMPLE_RED }),
+      text(t.line1, { x: cx, y: 162, 'text-anchor': 'middle', 'font-size': 30, fill: SAMPLE_RED, 'data-field': 'tag:line1' }),
+      text(t.line2, { x: cx, y: 195, 'text-anchor': 'middle', 'font-size': 30, fill: SAMPLE_RED, 'data-field': 'tag:line2' }),
     )
   }
   return g
@@ -124,7 +125,7 @@ function specRow(row: SpecRow, x: number, y: number, cols: 1 | 2): { node: SVGTe
   lines.forEach((line, i) => {
     const lineY = y + i * L.lineHeight
     if (i === 0 && labelText) {
-      const label = el('tspan', { x: x + indent, y: lineY, 'text-decoration': 'underline' })
+      const label = el('tspan', { x: x + indent, y: lineY, 'text-decoration': 'underline', 'data-field': `spec-label:${row.id}` })
       label.textContent = row.label
       const colon = el('tspan', {})
       colon.textContent = ': ' // colon and space aren't underlined, as on Peter's sheets
@@ -179,9 +180,9 @@ function palette(m: Mockup): SVGElement | null {
     // A typed-in CMYK from the brand guide wins over the formula, which is only approximate.
     const cmyk = row.cmyk || `${hexToCmyk(row.hex).map((v, j) => `${v}${'CMYK'[j]}`).join(' ')} (approx.)`
     g.append(
-      text(row.name, { x: PAL.swatchX, y: cy - 18, 'font-size': 6, fill: '#555555' }),
+      text(row.name, { x: PAL.swatchX, y: cy - 18, 'font-size': 6, fill: '#555555', 'data-field': `pal-name:${i}` }),
       el('rect', { x: PAL.swatchX, y: cy - 15, width: 30, height: 30, fill: row.hex, stroke: '#dddddd', 'stroke-width': 0.5 }),
-      text(cmyk, { x: PAL.cmykX, y: cy + 4, ...small }),
+      text(cmyk, { x: PAL.cmykX, y: cy + 4, ...small, 'data-field': `pal-cmyk:${i}` }),
       text(`${r}R ${gr}G ${b}B`, { x: PAL.rgbX, y: cy + 4, ...small }),
       text(row.hex.slice(1).toLowerCase(), { x: PAL.hexX, y: cy + 4, ...small }),
       el('line', { x1: PAL.cmykX, x2: PAL.ruleEnd, y1: cy + 21, y2: cy + 21, stroke: '#dddddd', 'stroke-width': 0.5 }),

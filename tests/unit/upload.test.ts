@@ -43,6 +43,7 @@ describe('logo type check (magic bytes, not the file name)', () => {
 
   it('data URLs round-trip and pass the file schema (large files too)', () => {
     const data = new Uint8Array(70_000).map((_, i) => i % 256) // > 2 chunks of 32 KB
+    data.set(PNG_SIG) // a real PNG signature: files are now checked by content, not just label
     const url = toDataUrl(data, 'image/png')
     const back = Uint8Array.from(atob(url.split(',')[1]), (c) => c.charCodeAt(0))
     expect(back.length).toBe(data.length)

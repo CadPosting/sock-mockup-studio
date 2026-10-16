@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { sniffImageType } from '../io/upload'
 
 // The schema is the single source of truth: types.ts derives every type from it,
 // so the file validator and the app's types can never disagree.
@@ -6,6 +7,9 @@ import { z } from 'zod'
 export const CURRENT_VERSION = 1
 
 const MAX_DATA_URL_LENGTH = 14_000_000 // ~10 MB file once base64-encoded
+// Shared with the store, so the editor can never build a mockup that fails to reload.
+export const MAX_SPECS = 40
+export const MAX_PLACEMENTS = 100
 
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'colour must be #rrggbb')
 const shortText = z.string().max(200)
@@ -93,6 +97,21 @@ const zonePatternSchema = z.discriminatedUnion('type', [
 
 const zoneFillSchema = z.object({ zone: z.enum(ZONE_IDS), pattern: zonePatternSchema })
 
+/**
+ * The payload must be real base64 whose first bytes are the declared image type (same magic-byte
+ * check as uploads), so a tampered file can't smuggle in HTML labelled as an SVG, or an empty logo.
+ */
+function embeddedTypeMatches(dataUrl: string, mime: string): boolean {
+  const b64 = dataUrl.slice(dataUrl.indexOf(',') + 1)
+  if (b64.length === 0 || b64.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(b64)) return false
+  try {
+    const head = Uint8Array.from(atob(b64.slice(0, 5464)), (c) => c.charCodeAt(0)) // ~4 KB
+    return sniffImageType(head) === mime
+  } catch {
+    return false
+  }
+}
+
 // Only the three image types we accept on upload, and only as base64 data URLs.
 const assetSchema = z
   .object({
@@ -105,7 +124,7 @@ const assetSchema = z
     height: z.number().int().min(1).max(20000).optional(),
     palette: z.array(hex).max(8).optional(),
   })
-  .refine((a) => a.dataUrl.startsWith(`data:${a.mime};base64,`), {
+  .refine((a) => a.dataUrl.startsWith(`data:${a.mime};base64,`) && embeddedTypeMatches(a.dataUrl, a.mime), {
     message: 'asset data does not match its declared image type',
   })
 
@@ -134,7 +153,7 @@ const headerSchema = z.object({
   title: shortText,
   titleBold: z.boolean(),
   columns: z.union([z.literal(1), z.literal(2)]),
-  specs: z.array(specRowSchema).max(40),
+  specs: z.array(specRowSchema).max(MAX_SPECS),
   palette: z.object({ show: z.boolean(), rows: z.array(paletteRowSchema).max(8) }),
 })
 
@@ -157,7 +176,7 @@ export const mockupSchema = z.object({
   }),
   stripes: z.union([z.literal(0), z.literal(1), z.literal(2)]),
   midBand: z.boolean(),
-  placements: z.array(placementSchema).max(100),
+  placements: z.array(placementSchema).max(MAX_PLACEMENTS),
   patterns: z.object({ gripDots: gripDotsSchema.nullable(), motif: motifSchema.nullable() }),
   // At most one pattern per zone; zones without an entry are flat colour.
   zoneFills: z
@@ -201,5 +220,27 @@ export function migrate(raw: unknown): z.infer<typeof mockupSchema> {
   if (refs.some((id) => id !== undefined && !assetIds.has(id))) {
     throw new MockupFileError("This file isn't a Sock Mockup Studio file (or it's damaged).")
   }
+  if (!idsAndLinksValid(mockup)) {
+    throw new MockupFileError("This file isn't a Sock Mockup Studio file (or it's damaged).")
+  }
   return mockup
+}
+
+/**
+ * Ids are unique, and every mirror link is one original <-> one copy: the copy points at an
+ * existing placement that is not itself a copy, and no original has two copies. The store relies
+ * on this (it finds a placement's partner by these links).
+ */
+function idsAndLinksValid(m: z.infer<typeof mockupSchema>): boolean {
+  const unique = (ids: string[]) => new Set(ids).size === ids.length
+  if (!unique(m.placements.map((p) => p.id)) || !unique(m.header.specs.map((r) => r.id))) return false
+  const byId = new Map(m.placements.map((p) => [p.id, p]))
+  const copiesOf = new Map<string, number>()
+  for (const p of m.placements) {
+    if (p.mirrorOf === undefined) continue
+    const original = byId.get(p.mirrorOf)
+    if (!original || original.id === p.id || original.mirrorOf !== undefined) return false
+    copiesOf.set(original.id, (copiesOf.get(original.id) ?? 0) + 1)
+  }
+  return [...copiesOf.values()].every((n) => n === 1)
 }

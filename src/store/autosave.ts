@@ -50,15 +50,25 @@ export function createAutosave(storage: DraftStorage, onStatus: (ok: boolean) =>
  * The saved draft, or null if there is none or it doesn't validate. A draft goes through the
  * same migrate() as an opened file, so a damaged draft can never half-load.
  */
-export async function loadDraft(storage: DraftStorage, timeoutMs = 1500): Promise<Draft | null> {
+export async function loadDraft(
+  storage: DraftStorage,
+  timeoutMs = 1500,
+  onDamaged: () => void = () => {},
+): Promise<Draft | null> {
   try {
     // A blocked or stuck IndexedDB must never stop the editor from opening: give up after a
     // moment and start fresh (the draft is still there for next time).
     const timeout = new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), timeoutMs))
     const raw = (await Promise.race([storage.get(KEY), timeout])) as { mockup?: unknown; savedAt?: unknown } | undefined
-    if (!raw || typeof raw.savedAt !== 'number') return null
+    if (!raw) return null
+    if (typeof raw.savedAt !== 'number') {
+      onDamaged()
+      return null
+    }
     return { mockup: migrate(raw.mockup), savedAt: raw.savedAt }
   } catch {
+    // A draft was there but didn't validate: tell the user rather than silently starting blank.
+    onDamaged()
     return null
   }
 }

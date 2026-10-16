@@ -647,3 +647,26 @@ body {
   flex: 1;
   width: auto;
 }
+
+/* ---------- inline text editing (editor-only) ---------- */
+
+.sheet [data-field] {
+  cursor: text;
+}
+
+.sheet [data-field^='placement:'] {
+  cursor: move;
+}
+
+.inline-edit {
+  position: absolute;
+  z-index: 3;
+  padding: 0 4px;
+  border: 2px solid var(--accent);
+  border-radius: 4px;
+  background: #fff;
+  color: #000;
+  font-family: Arimo, Arial, Helvetica, sans-serif;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.15);
+  outline: none;
+}

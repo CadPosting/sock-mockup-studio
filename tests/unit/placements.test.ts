@@ -76,7 +76,7 @@ describe('rendering placements', () => {
     m.placements = [wordmark()]
     const fields = [...render(m).querySelectorAll('[data-field]')].map((n) => n.getAttribute('data-field')!)
     expect(fields).toContain('title')
-    expect(fields).toContain('tag')
+    expect(fields).toContain('tag:n')
     expect(fields).toContain('label:0')
     expect(fields).toContain('placement:p1')
     expect(fields.filter((f) => f.startsWith('spec:'))).toHaveLength(8)

@@ -11,6 +11,7 @@ import { render } from '../render/sheet'
 import type { Store } from '../store/store'
 import { h } from './dom'
 import { viewCentre } from './geometry'
+import { startInlineEdit } from './inline-edit'
 import { createInspector } from './inspector'
 import { renderLayers } from './layers'
 import { DEFAULT_GRIP, DEFAULT_MOTIF } from './panels'
@@ -96,13 +97,15 @@ export function mountEditor(root: HTMLElement, store: Store) {
   // Logo upload: one hidden file input shared by the Upload button and the drop box.
   const fileInput = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/svg+xml', hidden: true })
   const pickLogo = () => fileInput.click()
-  const inspector = createInspector(store, selection, pickLogo)
+  const inspector = createInspector(store, selection, pickLogo, (name) =>
+    toast(`Switched to ${name}. Spec lines reset to its defaults (Ctrl+Z to undo).`),
+  )
   const right = h('aside', { class: 'panel panel--inspector', 'aria-label': 'Inspector' }, inspector.root)
   const small = h('div', { class: 'too-small' }, 'The editor needs a screen at least 1024 px wide. Exported mockups can be viewed on any device.')
 
   const app = h('div', { class: 'editor' }, topbar, banner, h('div', { class: 'workspace' }, layers, stage, right))
-  root.replaceChildren(app, small, fileInput)
   const toast = createToasts(app)
+  root.replaceChildren(app, small, fileInput)
 
   // ---------- adding placements ----------
   let lastView = 0 // "the selected view" for + Logo / + Text: the last view clicked on
@@ -184,6 +187,10 @@ export function mountEditor(root: HTMLElement, store: Store) {
   })
   // Pressing on a logo selects it and starts a move straight away (no separate click needed).
   let pressedPlacement = false
+  // Double-press detection is done here, not with the dblclick event: the first press can
+  // re-render the sheet, and then the browser no longer sees two clicks on the same element.
+  let lastPress = { id: '', at: 0 }
+  const DOUBLE_PRESS_MS = 400
   svgHolder.addEventListener('pointerdown', (e) => {
     const target = e.target as Element
     const view = target.closest('[data-view]')?.getAttribute('data-view')
@@ -192,13 +199,33 @@ export function mountEditor(root: HTMLElement, store: Store) {
     pressedPlacement = Boolean(id)
     if (!id || e.button !== 0) return
     e.preventDefault()
+    const double = lastPress.id === id && e.timeStamp - lastPress.at < DOUBLE_PRESS_MS
+    lastPress = { id, at: e.timeStamp }
     selection.set({ kind: 'placement', id })
+    const text = sheet.querySelector(`[data-field="placement:${id}"]`)
+    if (double && text) {
+      lastPress = { id: '', at: 0 }
+      startInlineEdit(store, sheet, text)
+      return
+    }
     overlay.startDrag('move', id, e)
   })
   svgHolder.addEventListener('click', (e) => {
     // The re-render during a drag means the click lands on an ancestor, not the logo; ignore it.
     if (pressedPlacement) return
-    if ((e.target as Element).closest?.('[data-part="header"]')) return selection.set({ kind: 'header' })
+    const target = e.target as Element
+    // Click any header text or view label to type over it in place (task 13b).
+    const text = target.closest?.('[data-field]')
+    if (text && !text.getAttribute('data-field')!.startsWith('placement:')) {
+      const key = text.getAttribute('data-field')!
+      // Selecting the header re-renders the sheet; measure the field's new element, not the
+      // removed one (which would put the edit box in the wrong place).
+      if (text.closest('[data-part="header"]')) selection.set({ kind: 'header' })
+      const live = [...sheet.querySelectorAll('[data-field]')].find((n) => n.getAttribute('data-field') === key)
+      if (live) startInlineEdit(store, sheet, live)
+      return
+    }
+    if (target.closest?.('[data-part="header"]')) return selection.set({ kind: 'header' })
     const z = zoneOf(e)
     selection.set(z ? { kind: 'zone', zone: z } : null) // clicking empty sheet deselects
   })
@@ -295,5 +322,6 @@ export function mountEditor(root: HTMLElement, store: Store) {
     },
     selection,
     uploadLogo,
+    toast,
   }
 }

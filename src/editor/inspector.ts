@@ -4,7 +4,7 @@
 // Built once and then synced, not rebuilt on every change: rebuilding would throw away the
 // text cursor while someone is typing the client name.
 
-import { VIEW_PRESETS, type ViewPresetId } from '../model/defaults'
+import { STYLE_PRESETS, type StylePresetId, VIEW_PRESETS, type ViewPresetId } from '../model/defaults'
 import type { Mockup } from '../model/types'
 import type { Store } from '../store/store'
 import { h } from './dom'
@@ -39,7 +39,12 @@ function currentViewSet(m: Mockup): ViewPresetId | '' {
   return hit ? hit[0] : ''
 }
 
-export function createInspector(store: Store, selection: SelectionStore, pickLogo: () => void) {
+export function createInspector(
+  store: Store,
+  selection: SelectionStore,
+  pickLogo: () => void,
+  onStyleApplied: (name: string) => void = () => {},
+) {
   const logoName = h('span', { class: 'logo-field__name' })
   const upload = h('button', { type: 'button', class: 'btn btn--outline' }, 'Upload logo')
   upload.addEventListener('click', pickLogo)
@@ -54,6 +59,17 @@ export function createInspector(store: Store, selection: SelectionStore, pickLog
   client.addEventListener('blur', () => store.endGesture())
 
   const template = select(TEMPLATES, (t) => store.dispatch({ type: 'setTemplate', template: t }))
+  // Sock style = a starting point (template, views, grip dots, spec defaults). Picking one is a
+  // one-off action, so the menu snaps back to its prompt afterwards.
+  const style = select<StylePresetId | ''>(
+    [['', 'Change sock style…'], ...Object.entries(STYLE_PRESETS).map(([id, p]) => [id, p.name] as [StylePresetId, string])],
+    (id) => {
+      if (!id) return
+      store.dispatch({ type: 'applyStyle', style: STYLE_PRESETS[id].make() })
+      style.value = ''
+      onStyleApplied(STYLE_PRESETS[id].name)
+    },
+  )
   const views = select(VIEW_SETS, (id) =>
     // Keep any labels the user typed for views of the same kind (e.g. "Left - outer").
     store.dispatch({
@@ -93,6 +109,7 @@ export function createInspector(store: Store, selection: SelectionStore, pickLog
     { class: 'panel-section' },
     h('p', { class: 'hint' }, 'Click any part of the sock to colour it.'),
     h('h2', { class: 'inspector__title' }, 'Sheet'),
+    field('Sock style', style),
     field('Client', client),
     field('Logo', logoField),
     field('Header', editHeader),

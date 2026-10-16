@@ -17,6 +17,9 @@ export function createSelection() {
   return {
     get: () => current,
     set(s: Selection) {
+      // Re-selecting what's already selected changes nothing; skipping it avoids a re-render
+      // (which would replace the element under the pointer mid double-click).
+      if (JSON.stringify(s) === JSON.stringify(current)) return
       current = s
       listeners.forEach((fn) => fn(s))
     },

@@ -45,8 +45,20 @@ export function createStore(initial: Mockup) {
     },
 
     endGesture() {
-      if (gestureStart && gestureStart !== state) record(gestureStart)
+      const changed = gestureStart !== null && gestureStart !== state
+      if (changed) record(gestureStart!)
       gestureStart = null
+      // The state is the same, but history isn't: Undo/Redo buttons need to know.
+      if (changed) emit()
+    },
+
+    /** Abandon the gesture in progress (Esc while editing): back to exactly where it started. */
+    cancelGesture() {
+      if (!gestureStart) return
+      const changed = gestureStart !== state
+      state = gestureStart
+      gestureStart = null
+      if (changed) emit()
     },
 
     undo() {

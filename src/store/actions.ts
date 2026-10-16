@@ -3,6 +3,7 @@
 // makes undo cheap (history just keeps references) and render() safe to call on any of them.
 
 import type { Asset, ColorRef, GripDots, Header, Mockup, Motif, Placement, SpecRow, ViewSlot, ZoneId, ZonePattern } from '../model/types'
+import { MAX_PLACEMENTS, MAX_SPECS } from '../model/schema'
 import { mirrored } from '../render/placements'
 
 export type Action =
@@ -11,6 +12,7 @@ export type Action =
   | { type: 'setStripes'; stripes: 0 | 1 | 2 }
   | { type: 'setMidBand'; on: boolean }
   | { type: 'setTemplate'; template: Mockup['template'] }
+  | { type: 'applyStyle'; style: Mockup }
   | { type: 'setViews'; views: Mockup['views'] }
   | { type: 'setViewLabel'; index: number; label: string }
   | { type: 'setPageColor'; pageColor: Mockup['pageColor'] }
@@ -65,6 +67,26 @@ export function apply(m: Mockup, a: Action): Mockup {
       return { ...m, midBand: a.on }
     case 'setTemplate':
       return { ...m, template: a.template }
+
+    // Switch sock style (Crew, Crew Grip, ...): take the style's sock and header defaults, keep
+    // everything that is the client's design (colours, patterns, logo, placements, client name).
+    case 'applyStyle': {
+      const s = a.style
+      return {
+        ...m,
+        template: s.template,
+        views: s.views,
+        patterns: { ...m.patterns, gripDots: s.patterns.gripDots },
+        header: {
+          ...m.header,
+          tag: m.header.tag.mode === 'sample' && s.header.tag.mode === 'sample' ? m.header.tag : s.header.tag,
+          title: s.header.title,
+          titleBold: s.header.titleBold,
+          columns: s.header.columns,
+          specs: s.header.specs,
+        },
+      }
+    }
     case 'setPageColor':
       return { ...m, pageColor: a.pageColor }
 
@@ -81,6 +103,8 @@ export function apply(m: Mockup, a: Action): Mockup {
       // passes mirrorId to ask for it; it's skipped when there's no opposite profile view.
       const other = a.mirrorId ? oppositeView(m, a.placement.view) : undefined
       const added = other === undefined ? [a.placement] : [a.placement, mirrored(a.placement, other, a.mirrorId!)]
+      // Never build a mockup the file schema would reject on reload (it caps placements).
+      if (m.placements.length + added.length > MAX_PLACEMENTS) return m
       return { ...m, placements: [...m.placements, ...added] }
     }
 
@@ -128,6 +152,7 @@ export function apply(m: Mockup, a: Action): Mockup {
     case 'setHeader':
       return { ...m, header: { ...m.header, ...a.patch } }
     case 'addSpec':
+      if (m.header.specs.length >= MAX_SPECS) return m // same reason as the placement cap
       return { ...m, header: { ...m.header, specs: [...m.header.specs, a.row] } }
     case 'updateSpec':
       return {
