@@ -118,6 +118,12 @@ export function patternDefs(m: Mockup): SVGDefsElement {
   return defs
 }
 
+/** True when two zones look identical (same colour, factory ref and pattern). */
+export function sameLook(m: Mockup, a: ZoneId, b: ZoneId): boolean {
+  const fill = (z: ZoneId) => JSON.stringify(m.zoneFills.find((f) => f.zone === z)?.pattern ?? null)
+  return JSON.stringify(m.zones[a]) === JSON.stringify(m.zones[b]) && fill(a) === fill(b)
+}
+
 /** What a zone path's fill should be: its pattern if it has one, else its flat colour. */
 export function zoneFill(m: Mockup, zone: ZoneId): string {
   return m.zoneFills.some((f) => f.zone === zone) ? `url(#${fillId(zone)})` : m.zones[zone].hex

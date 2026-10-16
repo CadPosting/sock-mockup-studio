@@ -113,4 +113,15 @@ describe('zone selection + colour picker (task 10)', () => {
     expect(new Set(s).size).toBe(s.length)
     expect(s).toContain('#000000')
   })
+
+  it('"Sheet settings" in Layers opens the sheet panel (style, client, logo) from any selection', () => {
+    const { root, inspector, heelOn } = setup()
+    heelOn(1).dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    const rows = [...root.querySelectorAll<HTMLElement>('.panel--layers [data-select]')]
+    expect(rows.slice(0, 2).map((r) => r.textContent)).toEqual(['Sheet settings', 'Header & specs'])
+    rows[0].click()
+    expect(inspector().querySelector('.inspector > div:not([hidden]) .inspector__title')!.textContent).toBe('Sheet')
+    expect(inspector().textContent).toContain('Sock style')
+    expect(root.querySelector('.panel--layers [data-select="sheet"]')!.classList.contains('layers__row--selected')).toBe(true)
+  })
 })

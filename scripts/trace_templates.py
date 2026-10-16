@@ -148,6 +148,46 @@ def to_local(
     return Traced(silhouette=[out.pop("silhouette")], zones=out)
 
 
+def centroid(poly: np.ndarray) -> np.ndarray:
+    """Area centroid of a closed polygon (shoelace formula)."""
+    x, y = poly[:, 0], poly[:, 1]
+    x1, y1 = np.roll(x, -1), np.roll(y, -1)
+    cross = x * y1 - x1 * y
+    area = cross.sum() / 2
+    return np.array([((x + x1) * cross).sum(), ((y + y1) * cross).sum()]) / (6 * area)
+
+
+def fit_similarity(src: np.ndarray, dst: np.ndarray) -> tuple[float, float, float, float, float]:
+    """Least-squares similarity (rotate + uniform scale + shift) mapping src points onto dst.
+
+    Returns (a, b, tx, ty, rms) for x' = a*x - b*y + tx, y' = b*x + a*y + ty. This is the
+    closed-form 2D Umeyama fit; reflection isn't allowed because src is already mirrored.
+    """
+    ms, md = src.mean(0), dst.mean(0)
+    s, d = src - ms, dst - md
+    denom = (s**2).sum()
+    a = (s[:, 0] * d[:, 0] + s[:, 1] * d[:, 1]).sum() / denom
+    b = (s[:, 0] * d[:, 1] - s[:, 1] * d[:, 0]).sum() / denom
+    tx = md[0] - (a * ms[0] - b * ms[1])
+    ty = md[1] - (b * ms[0] + a * ms[1])
+    mapped = np.stack([a * src[:, 0] - b * src[:, 1] + tx, b * src[:, 0] + a * src[:, 1] + ty], 1)
+    rms = float(np.sqrt(((mapped - dst) ** 2).sum(1).mean()))
+    return float(a), float(b), float(tx), float(ty), rms
+
+
+def right_from_left(left: Traced, right: Traced) -> tuple[float, float, float, float, float]:
+    """Map from the mirrored Left profile onto a separately traced Right, from landmark
+    centroids (whole sock, cuff, heel, toe). Used so a logo on Left lands on the same spot of
+    the sock on Right even though Peter drew Right on its own."""
+    def marks(t: Traced, flip: bool) -> np.ndarray:
+        polys = [t.silhouette[0], t.zones["cuff"], t.zones["heel"], t.zones["toe"]]
+        pts = np.array([centroid(p) for p in polys])
+        if flip:
+            pts[:, 0] = PROFILE_W - pts[:, 0]
+        return pts
+    return fit_similarity(marks(left, True), marks(right, False))
+
+
 def smooth_path(pts: np.ndarray) -> str:
     """Closed Catmull-Rom spline through the points, written as cubic Beziers.
 
@@ -253,6 +293,15 @@ def main() -> None:
             lines.append(f"      {z}: '{smooth_path(t.zones[z])}',")
         lines.append("    },")
         lines.append("  },")
+    lines.append("}")
+    lines.append("")
+    lines.append("/** Mirrored-Left -> Right similarity map: x' = a*x - b*y + tx, y' = b*x + a*y + ty. */")
+    lines.append("export type ProfileMap = { a: number; b: number; tx: number; ty: number }")
+    lines.append("export const RIGHT_FROM_LEFT: Partial<Record<'crew' | 'ankle', ProfileMap>> = {")
+    for name in rights:
+        a, b, tx, ty, rms = right_from_left(results[name], rights[name])
+        log.info("%s right-from-left: a=%.4f b=%.4f tx=%.2f ty=%.2f landmark rms=%.2f units", name, a, b, tx, ty, rms)
+        lines.append(f"  {name}: {{ a: {a:.5f}, b: {b:.5f}, tx: {tx:.3f}, ty: {ty:.3f} }}, // landmark fit rms {rms:.1f} units")
     lines.append("}")
     args.out_ts.write_text("\n".join(lines) + "\n")
     log.info("wrote %s", args.out_ts)

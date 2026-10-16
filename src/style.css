@@ -18,6 +18,12 @@
   box-sizing: border-box;
 }
 
+/* `hidden` must always win: a class with its own `display` (flex, grid) would otherwise
+   override the browser's default and show an element that's meant to be hidden. */
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   background: var(--bg);
@@ -669,4 +675,112 @@ body {
   font-family: Arimo, Arial, Helvetica, sans-serif;
   box-shadow: 0 2px 8px rgb(0 0 0 / 0.15);
   outline: none;
+}
+
+/* ---------- main menu / start dialog ---------- */
+
+.start-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgb(24 24 27 / 0.45);
+}
+
+.start {
+  width: min(960px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  padding: 28px;
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 20px 60px rgb(0 0 0 / 0.25);
+}
+
+.start__title {
+  margin: 0 0 4px;
+  font-size: 20px;
+}
+
+.start__lead {
+  margin: 0 0 18px;
+  color: var(--muted);
+}
+
+.start__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.start__card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+.start__card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.start__thumb {
+  aspect-ratio: 4 / 3;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #fff;
+  pointer-events: none;
+}
+
+.start__thumb > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.start__card-name {
+  font-weight: 600;
+}
+
+.start__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.start__action {
+  min-height: 36px;
+}
+
+.start__confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+}
+
+.start__confirm > span {
+  flex: 1;
+  min-width: 200px;
+}
+
+.topbar__menu {
+  font-weight: 600;
 }

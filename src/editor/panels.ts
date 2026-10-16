@@ -8,6 +8,7 @@ import type { Store } from '../store/store'
 import { colorField } from './color-field'
 import { h } from './dom'
 import { ZONE_NAMES } from './layers'
+import { sameLook } from '../render/patterns'
 import type { SelectionStore } from './selection'
 
 const PATTERN_NAMES: Record<(typeof PATTERN_TYPES)[number], string> = {
@@ -120,7 +121,13 @@ export function zonePanel(store: Store, zone: ZoneId): HTMLElement {
     'div',
     { class: 'panel-section' },
     h('h2', { class: 'inspector__title' }, ZONE_NAMES[zone]),
-    h('p', { class: 'hint hint--quiet' }, 'Changes this part on every view.'),
+    h(
+      'p',
+      { class: 'hint hint--quiet' },
+      (zone === 'foot' || zone === 'sole') && sameLook(m, zone, 'leg')
+        ? 'Follows the leg colour. Pick a colour here to make it different.'
+        : 'Changes this part on every view.',
+    ),
     colorField(store, pattern ? 'Base colour' : 'Colour', color, (c) => store.dispatch({ type: 'setZoneColor', zone, color: c }), { factoryRef: true }),
     h('label', { class: 'field' }, h('span', { class: 'field__label' }, 'Pattern'), patternSelect),
     ...(pattern ? patternControls(store, zone, pattern) : []),

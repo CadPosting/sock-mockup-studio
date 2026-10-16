@@ -35,3 +35,9 @@ export const PROFILES_RIGHT: Partial<Record<'crew' | 'ankle', ProfilePaths>> = {
     },
   },
 }
+
+/** Mirrored-Left -> Right similarity map: x' = a*x - b*y + tx, y' = b*x + a*y + ty. */
+export type ProfileMap = { a: number; b: number; tx: number; ty: number }
+export const RIGHT_FROM_LEFT: Partial<Record<'crew' | 'ankle', ProfileMap>> = {
+  ankle: { a: 0.97866, b: -0.18492, tx: -28.922, ty: 22.496 }, // landmark fit rms 0.3 units
+}

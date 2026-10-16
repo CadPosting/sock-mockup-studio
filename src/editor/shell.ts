@@ -12,6 +12,7 @@ import type { Store } from '../store/store'
 import { h } from './dom'
 import { viewCentre } from './geometry'
 import { startInlineEdit } from './inline-edit'
+import { openStartDialog, type StartDialogOptions } from './start-dialog'
 import { createInspector } from './inspector'
 import { renderLayers } from './layers'
 import { DEFAULT_GRIP, DEFAULT_MOTIF } from './panels'
@@ -42,6 +43,7 @@ function parseSelectKey(key: string): Selection {
   if (key.startsWith('zone:')) return { kind: 'zone', zone: key.slice(5) as ZoneId }
   if (key.startsWith('placement:')) return { kind: 'placement', id: key.slice(10) }
   if (key === 'gripDots' || key === 'motif' || key === 'header') return { kind: key }
+  if (key === 'sheet') return null // the sheet settings show when nothing is selected
   return null
 }
 
@@ -52,6 +54,10 @@ export function mountEditor(root: HTMLElement, store: Store) {
   const redo = button('↷ Redo', { title: 'Redo (Ctrl+Shift+Z)' })
   undo.addEventListener('click', () => store.undo())
   redo.addEventListener('click', () => store.redo())
+
+  // Main menu: new from a sock style, open a file, resume the draft (task 14).
+  const menuBtn = button('☰ Menu', { title: 'Main menu: new mockup from a sock style, or open a file' })
+  menuBtn.classList.add('topbar__menu')
 
   const layersToggle = button('Layers', { title: 'Show or hide the Layers panel' })
   layersToggle.classList.add('topbar__layers-toggle')
@@ -77,7 +83,7 @@ export function mountEditor(root: HTMLElement, store: Store) {
   const topbar = h(
     'header',
     { class: 'topbar' },
-    group(layersToggle, later('New', 'task 14'), later('Open', 'task 17'), later('Save', 'task 17'), later('Dup → next', 'task 17')),
+    group(menuBtn, layersToggle, later('Save', 'task 17'), later('Dup → next', 'task 17')),
     group(undo, redo),
     group(addLogoBtn, addTextBtn, dots, motifBtn),
     h('div', { class: 'topbar__spacer' }),
@@ -135,8 +141,12 @@ export function mountEditor(root: HTMLElement, store: Store) {
     const checked = await checkLogoFile(file)
     if (!checked.ok) return toast(checked.message, 'error')
     try {
-      const { width, height, palette } = await readImage(checked.dataUrl)
-      const asset = { name: file.name.slice(0, 200), mime: checked.mime, dataUrl: checked.dataUrl, width, height, palette }
+      const read = await readImage(checked.dataUrl)
+      // Only the aspect ratio matters; keep within the file schema's 20,000 px so it reloads.
+      const k = Math.min(1, 20000 / Math.max(read.width, read.height))
+      const width = Math.max(1, Math.round(read.width * k))
+      const height = Math.max(1, Math.round(read.height * k))
+      const asset = { name: file.name.slice(0, 200), mime: checked.mime, dataUrl: checked.dataUrl, width, height, palette: read.palette }
       store.dispatch({ type: 'setLogo', id: newId('logo'), asset })
       if (placeAfterUpload) addPlacement({ type: 'image', assetId: store.get().header.logoAssetId! })
     } catch {
@@ -163,14 +173,30 @@ export function mountEditor(root: HTMLElement, store: Store) {
 
   layersToggle.addEventListener('click', () => app.classList.toggle('editor--layers-open'))
 
+  function openMenu(opts: Partial<Pick<StartDialogOptions, 'canClose' | 'draft'>> = {}) {
+    selection.set(null)
+    openStartDialog(app, {
+      store,
+      canClose: opts.canClose ?? true,
+      draft: opts.draft,
+      onDone: (message) => {
+        if (message) toast(message)
+        menuBtn.focus()
+      },
+      onError: (message) => toast(message, 'error'),
+    })
+  }
+  menuBtn.addEventListener('click', () => openMenu())
+
   // ---------- linked-zone highlight (B5) ----------
   let hoverZone: ZoneId | null = null
 
   function paintHighlights() {
     const sel = selection.get()
     for (const n of sheet.querySelectorAll('.is-hover, .is-selected')) n.classList.remove('is-hover', 'is-selected')
-    if (hoverZone) for (const n of sheet.querySelectorAll(`[data-zone="${hoverZone}"]`)) n.classList.add('is-hover')
-    if (sel?.kind === 'zone') for (const n of sheet.querySelectorAll(`[data-zone="${sel.zone}"]`)) n.classList.add('is-selected')
+    // Stroke-drawn stripes are skipped: the highlight's own stroke would repaint them.
+    if (hoverZone) for (const n of sheet.querySelectorAll(`[data-zone="${hoverZone}"]:not([data-stroke])`)) n.classList.add('is-hover')
+    if (sel?.kind === 'zone') for (const n of sheet.querySelectorAll(`[data-zone="${sel.zone}"]:not([data-stroke])`)) n.classList.add('is-selected')
   }
 
   const zoneOf = (e: Event) => (e.target as Element).closest?.('[data-zone]')?.getAttribute('data-zone') as ZoneId | undefined
@@ -323,5 +349,6 @@ export function mountEditor(root: HTMLElement, store: Store) {
     selection,
     uploadLogo,
     toast,
+    openMenu,
   }
 }

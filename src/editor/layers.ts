@@ -19,13 +19,11 @@ export const ZONE_NAMES: Record<ZoneId, string> = {
 
 /** Zones that are actually drawn with the current settings (no point listing hidden stripes). */
 function visibleZones(m: Mockup): ZoneId[] {
-  const hasSole = m.views.some((v) => v.kind === 'sole')
   return ZONE_IDS.filter((z) => {
     if (z === 'stripe1') return m.stripes >= 1
     if (z === 'stripe2') return m.stripes >= 2
     if (z === 'band') return m.midBand
-    if (z === 'sole') return hasSole
-    return z !== 'foot' // not drawn by any template yet
+    return true
   })
 }
 
@@ -67,12 +65,15 @@ export function renderLayers(m: Mockup, selected: string | null): HTMLElement {
     m.patterns.motif ? row('Repeat motif', undefined, undefined, 'motif') : null,
   ].filter((n): n is HTMLLIElement => n !== null)
 
+  // "Sheet settings" = nothing selected: the right panel shows style, client, logo, template, views.
+  const sheet = row('Sheet settings', undefined, undefined, 'sheet')
   const header = row('Header & specs', undefined, undefined, 'header')
+  if (selected === null) sheet.classList.add('layers__row--selected')
   for (const r of [header, ...zones, ...logos, ...texts, ...patterns]) if (r.dataset.select === selected) r.classList.add('layers__row--selected')
   return h(
     'div',
     { class: 'layers' },
-    h('section', { class: 'layers__section' }, h('ul', { class: 'layers__list' }, header)),
+    h('section', { class: 'layers__section' }, h('ul', { class: 'layers__list' }, sheet, header)),
     section('Zones', zones, ''),
     section('Logos', logos, 'No logos yet'),
     section('Text', texts, 'No text yet'),

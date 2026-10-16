@@ -4,7 +4,8 @@
 
 import type { Asset, ColorRef, GripDots, Header, Mockup, Motif, Placement, SpecRow, ViewSlot, ZoneId, ZonePattern } from '../model/types'
 import { MAX_PLACEMENTS, MAX_SPECS } from '../model/schema'
-import { mirrored } from '../render/placements'
+import { sameLook } from '../render/patterns'
+import { acrossProfiles } from '../render/placements'
 
 export type Action =
   | { type: 'setZoneColor'; zone: ZoneId; color: ColorRef }
@@ -33,6 +34,10 @@ export type Action =
 
 const PROFILE_PAIR: Record<string, 'left' | 'right'> = { left: 'right', right: 'left' }
 
+/** Zones that copy the leg while they still look identical to it. */
+const FOLLOW_LEG: ZoneId[] = ['foot', 'sole']
+const followers = (m: Mockup, zone: ZoneId): ZoneId[] => (zone === 'leg' ? FOLLOW_LEG.filter((z) => sameLook(m, z, 'leg')) : [])
+
 /** The view index on the other side of a profile view, if this mockup has one. */
 function oppositeView(m: Mockup, view: number): number | undefined {
   const other = PROFILE_PAIR[m.views[view].kind]
@@ -41,24 +46,65 @@ function oppositeView(m: Mockup, view: number): number | undefined {
   return i >= 0 ? i : undefined
 }
 
+/** True when two placements sit on opposite profile views (one Left, one Right). */
+function oppositeSides(m: Mockup, a: Placement, b: Placement): boolean {
+  const ka = m.views[a.view]?.kind
+  const kb = m.views[b.view]?.kind
+  return (ka === 'left' && kb === 'right') || (ka === 'right' && kb === 'left')
+}
+
 /** The linked partner of a placement: its mirror copy, or the original it mirrors. */
 function partner(m: Mockup, p: Placement): Placement | undefined {
   return m.placements.find((q) => q.id !== p.id && (q.mirrorOf === p.id || p.mirrorOf === q.id))
 }
 
-/** Rebuild `target` as the mirror of `source`, keeping target's own id, view and link field. */
-function resync(source: Placement, target: Placement): Placement {
-  return { ...mirrored(source, target.view, target.id), mirrorOf: target.mirrorOf }
+/** The copy of `source` on profile view `view` (Left <-> Right), for this mockup's template. */
+function copyAcross(m: Mockup, source: Placement, view: number, id: string): Placement {
+  const kind = m.views[source.view].kind
+  return acrossProfiles(m.template, kind === 'right' ? 'right' : 'left', source, view, id)
+}
+
+/** Rebuild `target` as the copy of `source`, keeping target's own id, view and link field. */
+function resync(m: Mockup, source: Placement, target: Placement): Placement {
+  return { ...copyAcross(m, source, target.view, target.id), mirrorOf: target.mirrorOf }
+}
+
+/**
+ * After the template (or view set) changes, rebuild every linked copy from its original with the
+ * new template's Left <-> Right mapping, so a later edit doesn't make the copy jump.
+ */
+function resyncLinked(m: Mockup): Mockup {
+  if (!m.placements.some((p) => p.mirrorOf)) return m
+  const byId = new Map(m.placements.map((p) => [p.id, p]))
+  return {
+    ...m,
+    placements: m.placements.map((p) => {
+      const original = p.mirrorOf ? byId.get(p.mirrorOf) : undefined
+      if (!original) return p
+      if (!oppositeSides(m, original, p)) {
+        // The view change broke the pair (e.g. Right became Back): unlink, keep both where they are.
+        const { mirrorOf: _, ...plain } = p
+        return plain
+      }
+      return resync(m, original, p)
+    }),
+  }
 }
 
 export function apply(m: Mockup, a: Action): Mockup {
   switch (a.type) {
-    case 'setZoneColor':
-      return { ...m, zones: { ...m.zones, [a.zone]: a.color } }
+    case 'setZoneColor': {
+      // The foot and sole follow the leg for as long as they look exactly like it, so colouring
+      // "the sock" still colours all of it. Once given their own look, they stay independent.
+      const zones = { ...m.zones, [a.zone]: a.color }
+      for (const z of followers(m, a.zone)) zones[z] = a.color
+      return { ...m, zones }
+    }
 
     case 'setZonePattern': {
-      const rest = m.zoneFills.filter((f) => f.zone !== a.zone)
-      return { ...m, zoneFills: a.pattern ? [...rest, { zone: a.zone, pattern: a.pattern }] : rest }
+      const targets = [a.zone, ...followers(m, a.zone)]
+      const rest = m.zoneFills.filter((f) => !targets.includes(f.zone))
+      return { ...m, zoneFills: a.pattern ? [...rest, ...targets.map((zone) => ({ zone, pattern: a.pattern! }))] : rest }
     }
 
     case 'setStripes':
@@ -66,13 +112,13 @@ export function apply(m: Mockup, a: Action): Mockup {
     case 'setMidBand':
       return { ...m, midBand: a.on }
     case 'setTemplate':
-      return { ...m, template: a.template }
+      return resyncLinked({ ...m, template: a.template })
 
     // Switch sock style (Crew, Crew Grip, ...): take the style's sock and header defaults, keep
     // everything that is the client's design (colours, patterns, logo, placements, client name).
     case 'applyStyle': {
       const s = a.style
-      return {
+      return resyncLinked({
         ...m,
         template: s.template,
         views: s.views,
@@ -85,14 +131,14 @@ export function apply(m: Mockup, a: Action): Mockup {
           columns: s.header.columns,
           specs: s.header.specs,
         },
-      }
+      })
     }
     case 'setPageColor':
       return { ...m, pageColor: a.pageColor }
 
     case 'setViews':
       // Placements are view-local, so they keep their spot when the view set changes (TDD §3).
-      return { ...m, views: a.views }
+      return resyncLinked({ ...m, views: a.views })
     case 'setViewLabel': {
       const views = m.views.map((v, i): ViewSlot => (i === a.index ? { ...v, label: a.label } : v)) as Mockup['views']
       return { ...m, views }
@@ -102,7 +148,7 @@ export function apply(m: Mockup, a: Action): Mockup {
       // PRD 5.6: on Left/Right, a mirrored copy goes on the other side by default. The caller
       // passes mirrorId to ask for it; it's skipped when there's no opposite profile view.
       const other = a.mirrorId ? oppositeView(m, a.placement.view) : undefined
-      const added = other === undefined ? [a.placement] : [a.placement, mirrored(a.placement, other, a.mirrorId!)]
+      const added = other === undefined ? [a.placement] : [a.placement, copyAcross(m, a.placement, other, a.mirrorId!)]
       // Never build a mockup the file schema would reject on reload (it caps placements).
       if (m.placements.length + added.length > MAX_PLACEMENTS) return m
       return { ...m, placements: [...m.placements, ...added] }
@@ -114,7 +160,7 @@ export function apply(m: Mockup, a: Action): Mockup {
       const next = { ...p, ...a.patch }
       const linked = partner(m, p)
       // Moving either copy moves the other (TDD §3).
-      const synced = linked ? resync(next, linked) : undefined
+      const synced = linked && oppositeSides(m, next, linked) ? resync(m, next, linked) : undefined
       return {
         ...m,
         placements: m.placements.map((q) => (q.id === p.id ? next : synced && q.id === synced.id ? synced : q)),

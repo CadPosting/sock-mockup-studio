@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { STYLE_PRESETS } from '../../src/model/defaults'
 import type { Placement } from '../../src/model/types'
-import { mirrored } from '../../src/render/placements'
+import { acrossProfiles, mirrored, rightFromLeftTransform } from '../../src/render/placements'
 import { render } from '../../src/render/sheet'
 
 const PNG_1PX =
@@ -80,5 +80,38 @@ describe('rendering placements', () => {
     expect(fields).toContain('label:0')
     expect(fields).toContain('placement:p1')
     expect(fields.filter((f) => f.startsWith('spec:'))).toHaveLength(8)
+  })
+})
+
+describe('ankle Left <-> Right mapping (fitted to the traced outlines)', () => {
+  const p = wordmark({ x: 120, y: 200, rotation: 15, scale: 1.2 })
+
+  it('Right -> Left undoes Left -> Right exactly (move either copy, the other stays put)', () => {
+    const right = acrossProfiles('ankle', 'left', p, 3, 'p2')
+    const back = acrossProfiles('ankle', 'right', right, 2, 'p1')
+    expect(back.x).toBeCloseTo(p.x, 9)
+    expect(back.y).toBeCloseTo(p.y, 9)
+    expect(back.rotation).toBeCloseTo(p.rotation, 9)
+    expect(back.scale).toBeCloseTo(p.scale, 9)
+  })
+
+  it("the copy is not a plain flip: it follows Peter's tilted Right", () => {
+    const flip = mirrored(p, 3, 'p2')
+    const mapped = acrossProfiles('ankle', 'left', p, 3, 'p2')
+    expect(Math.hypot(mapped.x - flip.x, mapped.y - flip.y)).toBeGreaterThan(5)
+    expect(mapped.rotation).not.toBeCloseTo(-15, 0)
+  })
+
+  it('crew has no map: a plain mirror, as before', () => {
+    expect(acrossProfiles('crew', 'left', p, 3, 'p2')).toEqual(mirrored(p, 3, 'p2'))
+  })
+
+  it('the SVG matrix for Right extras maps points exactly like the logo copy does', () => {
+    const [A, B, C, D, E, F] = rightFromLeftTransform('ankle')!.match(/-?[\d.e-]+/g)!.map(Number)
+    for (const [x, y] of [[0, 0], [160, 45], [85, 303], [262, 194], [30, 400]]) {
+      const viaCopy = acrossProfiles('ankle', 'left', wordmark({ x, y }), 3, 'c')
+      expect(A * x + C * y + E).toBeCloseTo(viaCopy.x, 6)
+      expect(B * x + D * y + F).toBeCloseTo(viaCopy.y, 6)
+    }
   })
 })

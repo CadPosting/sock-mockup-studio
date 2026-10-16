@@ -2,7 +2,7 @@
 // origin as the view's slot, never flipped, so a mirrored Right doesn't mirror the glyphs.
 
 import type { FontId, Mockup, Placement } from '../model/types'
-import { PROFILE_SIZE } from '../templates/profiles.generated'
+import { PROFILE_SIZE, type ProfileMap, RIGHT_FROM_LEFT } from '../templates/profiles.generated'
 import { el } from './dom'
 
 /** A placement at scale 1: images fit a 100x100 box, text is 24 units tall. */
@@ -17,9 +17,7 @@ export const FONTS: Record<FontId, { family: string; weight: number }> = {
 /**
  * The linked copy on the opposite side (TDD §3): the position flips across the view, the
  * rotation reverses, the content itself is not flipped, so text never reads backwards.
- * This is exact where Right is the mirrored Left (crew). Peter's ankle Right is its own drawing,
- * so there the copy can land a little off and gets nudged by hand. Kept in this one function
- * so a better mapping can replace it without touching anything else.
+ * Exact where Right is the mirrored Left (crew). See `acrossProfiles` for the ankle.
  */
 export function mirrored(p: Placement, view: number, id: string): Placement {
   return {
@@ -31,6 +29,56 @@ export function mirrored(p: Placement, view: number, id: string): Placement {
     mirrorOf: p.id,
   }
 }
+
+const deg = (r: number) => (r * 180) / Math.PI
+
+/**
+ * The linked copy on the other profile view, for any template. Peter's ankle Right is drawn on its
+ * own (not a mirror of Left), so there the flipped position also goes through RIGHT_FROM_LEFT, a
+ * rotate + scale + shift fitted to the two traced outlines at build time (landmark error 0.3
+ * units). Going Right -> Left uses the inverse, so moving either copy keeps the other in place.
+ */
+export function acrossProfiles(template: Mockup['template'], fromKind: 'left' | 'right', p: Placement, view: number, id: string): Placement {
+  const map: ProfileMap | undefined = RIGHT_FROM_LEFT[template === 'crew' ? 'crew' : 'ankle']
+  if (!map) return mirrored(p, view, id)
+  const s = Math.hypot(map.a, map.b)
+  const theta = deg(Math.atan2(map.b, map.a))
+  const out = { ...structuredClone(p), id, view, mirrorOf: p.id }
+  if (fromKind === 'left') {
+    const qx = PROFILE_SIZE.width - p.x // mirror first...
+    const qy = p.y
+    out.x = map.a * qx - map.b * qy + map.tx // ...then onto Peter's Right
+    out.y = map.b * qx + map.a * qy + map.ty
+    out.rotation = -p.rotation + theta
+    out.scale = p.scale * s
+  } else {
+    const rx = p.x - map.tx // undo the shift, then the rotate + scale...
+    const ry = p.y - map.ty
+    const k = 1 / (map.a * map.a + map.b * map.b)
+    const qx = k * (map.a * rx + map.b * ry)
+    const qy = k * (-map.b * rx + map.a * ry)
+    out.x = PROFILE_SIZE.width - qx // ...then mirror back onto Left
+    out.y = qy
+    out.rotation = theta - p.rotation
+    out.scale = p.scale / s
+  }
+  out.rotation = ((((out.rotation + 180) % 360) + 360) % 360) - 180
+  out.scale = Math.min(20, Math.max(0.01, out.scale))
+  return out
+}
+
+/** The matrix that draws ankle-Right extras (tab flap, mid band) traced on Left onto Right. */
+export function rightFromLeftTransform(template: Mockup['template']): string | null {
+  const map = RIGHT_FROM_LEFT[template === 'crew' ? 'crew' : 'ankle']
+  if (!map) return null
+  // map ∘ mirror, where mirror(x, y) = (W - x, y):
+  //   x' = a(W - x) - b·y + tx = -a·x - b·y + (aW + tx)
+  //   y' = b(W - x) + a·y + ty = -b·x + a·y + (bW + ty)
+  // SVG matrix(A B C D E F) means x' = A·x + C·y + E, y' = B·x + D·y + F.
+  const W = PROFILE_SIZE.width
+  return `matrix(${-map.a} ${-map.b} ${-map.b} ${map.a} ${map.a * W + map.tx} ${map.b * W + map.ty})`
+}
+
 
 export function content(m: Mockup, p: Placement): SVGElement | null {
   if (p.content.type === 'image') {

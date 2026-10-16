@@ -20,8 +20,10 @@ export function sniffImageType(bytes: Uint8Array): LogoMime | null {
   if (starts([0xff, 0xd8, 0xff])) return 'image/jpeg'
   // SVG is text: allow a BOM, whitespace, an XML declaration, comments or a doctype first,
   // and require a real <svg element near the start.
-  const head = new TextDecoder('utf-8', { fatal: false }).decode(bytes.subarray(0, 4096)).replace(/^﻿/, '')
-  const svgStart = /^\s*(<\?xml[^>]*\?>\s*)?(<!--[\s\S]*?-->\s*|<!DOCTYPE[^>]*>\s*)*<svg[\s>]/i
+  const head = new TextDecoder('utf-8', { fatal: false }).decode(bytes.subarray(0, 4096)).replace(/^\uFEFF/, '')
+  // Doctypes may carry an internal subset in [...] (Illustrator writes entity declarations there).
+  // Entities are never resolved here: the file is only shown later through a data-URL <image>.
+  const svgStart = /^\s*(<\?xml[^>]*\?>\s*)?(<!--[\s\S]*?-->\s*|<!DOCTYPE[^[>]*(\[[\s\S]*?\])?\s*>\s*)*<svg[\s>]/i
   if (svgStart.test(head)) return 'image/svg+xml'
   return null
 }

@@ -13,6 +13,8 @@ export const MAX_PLACEMENTS = 100
 
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'colour must be #rrggbb')
 const shortText = z.string().max(200)
+// Ids are plain tokens (what newId() makes), so they're always safe inside a CSS selector.
+const idString = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/, 'bad id')
 
 export const colorRefSchema = z.object({
   hex,
@@ -31,7 +33,7 @@ const viewSlotSchema = z.object({
 })
 
 const contentSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('image'), assetId: z.string().min(1).max(64) }),
+  z.object({ type: z.literal('image'), assetId: idString }),
   z.object({
     type: z.literal('text'),
     text: shortText,
@@ -41,7 +43,7 @@ const contentSchema = z.discriminatedUnion('type', [
 ])
 
 const placementSchema = z.object({
-  id: z.string().min(1).max(64),
+  id: idString,
   view: z.number().int().min(0).max(3),
   content: contentSchema,
   x: z.number().finite(),
@@ -49,7 +51,7 @@ const placementSchema = z.object({
   scale: z.number().positive().max(20),
   rotation: z.number().finite(),
   clip: z.boolean(),
-  mirrorOf: z.string().max(64).optional(),
+  mirrorOf: idString.optional(),
 })
 
 const gripDotsSchema = z.object({
@@ -129,7 +131,7 @@ const assetSchema = z
   })
 
 const specRowSchema = z.object({
-  id: z.string().min(1).max(64),
+  id: idString,
   label: shortText, // empty label = value printed on its own (DWU style)
   value: z.string().max(500),
   visible: z.boolean(),
@@ -148,7 +150,7 @@ const paletteRowSchema = z.object({
 
 const headerSchema = z.object({
   client: shortText,
-  logoAssetId: z.string().max(64).optional(),
+  logoAssetId: idString.optional(),
   tag: tagSchema,
   title: shortText,
   titleBold: z.boolean(),
@@ -184,7 +186,7 @@ export const mockupSchema = z.object({
     .max(ZONE_IDS.length)
     .refine((fills) => new Set(fills.map((f) => f.zone)).size === fills.length, 'one pattern per zone'),
   header: headerSchema,
-  assets: z.record(z.string().max(64), assetSchema),
+  assets: z.record(idString, assetSchema),
 })
 
 export class MockupFileError extends Error {}
