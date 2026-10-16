@@ -128,6 +128,7 @@ export function startInlineEdit(store: Store, sheet: HTMLElement, target: Elemen
     finished = true
     if (keep) store.endGesture()
     else store.cancelGesture()
+    document.removeEventListener('pointerdown', outside, true)
     input.remove()
     onDone()
   }
@@ -151,6 +152,13 @@ export function startInlineEdit(store: Store, sheet: HTMLElement, target: Elemen
     if (e.key === 'Escape') finish(false)
   })
   input.addEventListener('blur', () => finish(true))
+  // Also close on any press outside the box. Normally blur covers this, but blur never fires if
+  // the window didn't have focus (e.g. the browser was behind another app), and the box must not
+  // linger open.
+  const outside = (e: Event) => {
+    if (e.target !== input) finish(true)
+  }
+  document.addEventListener('pointerdown', outside, true)
   grow()
   input.focus()
   input.select()

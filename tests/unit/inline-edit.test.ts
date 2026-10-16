@@ -115,4 +115,14 @@ describe('click-to-edit text on the sheet (task 13b)', () => {
     expect(root.querySelector('.sheet__svg .inline-edit')).toBeNull()
     expect(root.querySelector('.sheet > .inline-edit')).not.toBeNull()
   })
+
+  it('a press anywhere outside the box saves and closes it, even if blur never fires', () => {
+    const { root, store, click, box, typeInto } = setup()
+    click('[data-field="title"]')
+    typeInto('Kept')
+    root.querySelector('.panel--layers')!.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }))
+    expect(box()).toBeNull()
+    expect(store.get().header.title).toBe('Kept')
+    expect(store.canUndo()).toBe(true)
+  })
 })

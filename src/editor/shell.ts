@@ -450,7 +450,10 @@ export function mountEditor(root: HTMLElement, store: Store) {
       pressed = null
       return
     }
-    const hit = pressed ?? hitOf(e.target as Element)
+    // A click that lands on a specific part is trusted as is. The press recorded at pointerdown is
+    // only for clicks that land on the sheet background because a redraw replaced the element.
+    const direct = hitOf(e.target as Element)
+    const hit = direct.field || direct.zone || direct.header ? direct : (pressed ?? direct)
     pressed = null
     // Click any header text or view label to type over it in place (task 13b).
     if (hit.field && !hit.field.startsWith('placement:')) {

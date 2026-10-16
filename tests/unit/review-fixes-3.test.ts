@@ -200,3 +200,15 @@ describe('round 5 (Codex review of task 16)', () => {
     expect(root.querySelector('.overlay__box')).toBeNull()
   })
 })
+
+describe('a click straight on a part wins over a stale press', () => {
+  it('pointerdown on the heel with no pointerup, then a click on a spec line edits the spec', () => {
+    const root = document.createElement('div')
+    document.body.replaceChildren(root)
+    const store = createStore(STYLE_PRESETS.crew.make())
+    mountEditor(root, store)
+    root.querySelector('.sheet [data-view="1"] [data-zone="heel"]')!.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }))
+    root.querySelector('.sheet [data-part="specs"] text')!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    expect(root.querySelector('.inline-edit')).not.toBeNull()
+  })
+})
