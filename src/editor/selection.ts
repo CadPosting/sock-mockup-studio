@@ -3,7 +3,12 @@
 
 import type { ZoneId } from '../model/types'
 
-export type Selection = { kind: 'zone'; zone: ZoneId } | { kind: 'gripDots' } | { kind: 'motif' } | null
+export type Selection =
+  | { kind: 'zone'; zone: ZoneId }
+  | { kind: 'placement'; id: string }
+  | { kind: 'gripDots' }
+  | { kind: 'motif' }
+  | null
 
 export function createSelection() {
   let current: Selection = null

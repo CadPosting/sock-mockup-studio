@@ -187,3 +187,57 @@ export function motifPanel(store: Store, selection: SelectionStore): HTMLElement
   )
   return h('div', { class: 'panel-section' }, ...parts)
 }
+
+/** A selected logo or text wordmark (PRD 5.6). */
+export function placementPanel(store: Store, selection: SelectionStore, id: string): HTMLElement {
+  const m = store.get()
+  const p = m.placements.find((q) => q.id === id)
+  if (!p) return h('div')
+  const set = (patch: Parameters<typeof updatePatch>[0]) => store.dispatch(updatePatch(patch, id))
+  const parts: Node[] = []
+
+  if (p.content.type === 'text') {
+    const content = p.content
+    parts.push(h('h2', { class: 'inspector__title' }, 'Text'))
+    const text = h('input', { class: 'input', type: 'text', value: content.text, maxlength: '200', 'aria-label': 'Text' })
+    // Typing is one undo step, like the client name.
+    text.addEventListener('focus', () => store.beginGesture())
+    text.addEventListener('input', () => set({ content: { ...content, text: text.value } }))
+    text.addEventListener('blur', () => store.endGesture())
+    parts.push(
+      h('label', { class: 'field' }, h('span', { class: 'field__label' }, 'Text'), text),
+      segmented('Font', [['arimo', 'Arimo Bold'], ['oswald', 'Oswald'], ['baskerville', 'Baskerville']], content.font, (font) => set({ content: { ...content, font } })),
+      colorField(store, 'Colour', content.color, (color) => set({ content: { ...content, color } }), { factoryRef: true }),
+    )
+  } else {
+    const asset = m.assets[p.content.assetId]
+    parts.push(h('h2', { class: 'inspector__title' }, 'Logo'), h('p', { class: 'hint hint--quiet' }, asset?.name ?? ''))
+  }
+
+  parts.push(
+    numberField(store, 'Size', Math.round(p.scale * 100), 5, 600, 1, (v) => set({ scale: v / 100 })),
+    numberField(store, 'Rotation', Math.round(p.rotation), -180, 180, 1, (rotation) => set({ rotation })),
+    segmented('Clip to sock outline', [[1, 'On'], [0, 'Off']], p.clip ? 1 : 0, (v) => set({ clip: v === 1 })),
+  )
+
+  const linked = m.placements.find((q) => q.id !== p.id && (q.mirrorOf === p.id || p.mirrorOf === q.id))
+  if (linked) {
+    const unlink = h('button', { type: 'button', class: 'btn btn--outline' }, 'Unlink')
+    unlink.addEventListener('click', () => store.dispatch({ type: 'unlinkPlacement', id }))
+    const other = m.views[linked.view].label || m.views[linked.view].kind
+    parts.push(h('div', { class: 'field linked' }, h('span', {}, `Mirrored on ${other}. Moving either moves both.`), unlink))
+  }
+
+  const remove = h('button', { type: 'button', class: 'btn btn--danger' }, linked ? 'Delete (both sides)' : 'Delete')
+  remove.addEventListener('click', () => {
+    store.dispatch({ type: 'removePlacement', id })
+    selection.set(null)
+  })
+  parts.push(remove)
+  return h('div', { class: 'panel-section' }, ...parts)
+}
+
+type PlacementPatch = Partial<Omit<import('../model/types').Placement, 'id' | 'mirrorOf'>>
+function updatePatch(patch: PlacementPatch, id: string) {
+  return { type: 'updatePlacement' as const, id, patch }
+}

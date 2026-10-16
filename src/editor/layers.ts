@@ -57,17 +57,17 @@ export function renderLayers(m: Mockup, selected: string | null): HTMLElement {
   const viewName = (i: number) => m.views[i].label || m.views[i].kind
   const logos = m.placements
     .filter((p) => p.content.type === 'image')
-    .map((p) => row(m.assets[(p.content as { assetId: string }).assetId]?.name ?? 'Logo', undefined, viewName(p.view)))
+    .map((p) => row(m.assets[(p.content as { assetId: string }).assetId]?.name ?? 'Logo', undefined, viewName(p.view), `placement:${p.id}`))
   const texts = m.placements
     .filter((p) => p.content.type === 'text')
-    .map((p) => row((p.content as { text: string }).text || 'Text', undefined, viewName(p.view)))
+    .map((p) => row((p.content as { text: string }).text || 'Text', (p.content as { color: { hex: string } }).color.hex, viewName(p.view), `placement:${p.id}`))
 
   const patterns = [
     m.patterns.gripDots ? row('Grip dots', m.patterns.gripDots.color.hex, undefined, 'gripDots') : null,
     m.patterns.motif ? row('Repeat motif', undefined, undefined, 'motif') : null,
   ].filter((n): n is HTMLLIElement => n !== null)
 
-  for (const r of [...zones, ...patterns]) if (r.dataset.select === selected) r.classList.add('layers__row--selected')
+  for (const r of [...zones, ...logos, ...texts, ...patterns]) if (r.dataset.select === selected) r.classList.add('layers__row--selected')
   return h(
     'div',
     { class: 'layers' },

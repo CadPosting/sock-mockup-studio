@@ -8,7 +8,7 @@ import { VIEW_PRESETS, type ViewPresetId } from '../model/defaults'
 import type { Mockup } from '../model/types'
 import type { Store } from '../store/store'
 import { h } from './dom'
-import { gripPanel, motifPanel, zonePanel } from './panels'
+import { gripPanel, motifPanel, placementPanel, zonePanel } from './panels'
 import type { SelectionStore } from './selection'
 
 const TEMPLATES: [Mockup['template'], string][] = [
@@ -124,7 +124,13 @@ export function createInspector(store: Store, selection: SelectionStore, pickLog
     if (selected.contains(document.activeElement) && selected.dataset.for === JSON.stringify(sel)) return
     selected.dataset.for = JSON.stringify(sel)
     selected.replaceChildren(
-      sel.kind === 'zone' ? zonePanel(store, sel.zone) : sel.kind === 'gripDots' ? gripPanel(store, selection) : motifPanel(store, selection),
+      sel.kind === 'zone'
+        ? zonePanel(store, sel.zone)
+        : sel.kind === 'placement'
+          ? placementPanel(store, selection, sel.id)
+          : sel.kind === 'gripDots'
+            ? gripPanel(store, selection)
+            : motifPanel(store, selection),
     )
   }
 
