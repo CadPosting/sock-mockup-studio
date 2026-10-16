@@ -38,7 +38,14 @@ function currentViewSet(m: Mockup): ViewPresetId | '' {
   return hit ? hit[0] : ''
 }
 
-export function createInspector(store: Store, selection: SelectionStore) {
+export function createInspector(store: Store, selection: SelectionStore, pickLogo: () => void) {
+  const logoName = h('span', { class: 'logo-field__name' })
+  const upload = h('button', { type: 'button', class: 'btn btn--outline' }, 'Upload logo')
+  upload.addEventListener('click', pickLogo)
+  const removeLogo = h('button', { type: 'button', class: 'btn btn--danger' }, 'Remove')
+  removeLogo.addEventListener('click', () => store.dispatch({ type: 'removeLogo' }))
+  const logoField = h('div', { class: 'logo-field' }, upload, logoName, removeLogo)
+
   const client = h('input', { class: 'input', type: 'text', placeholder: 'e.g. Mount Allison University', maxlength: '200' })
   client.addEventListener('input', () => store.dispatch({ type: 'setHeader', patch: { client: client.value } }))
   // Typing a whole name is one undo step, not one per keystroke.
@@ -83,6 +90,7 @@ export function createInspector(store: Store, selection: SelectionStore) {
     h('p', { class: 'hint' }, 'Click any part of the sock to colour it.'),
     h('h2', { class: 'inspector__title' }, 'Sheet'),
     field('Client', client),
+    field('Logo', logoField),
     field('Sock template', template),
     field('Views', views),
     field('Cuff stripes', stripes.g),
@@ -96,6 +104,10 @@ export function createInspector(store: Store, selection: SelectionStore) {
     // Don't overwrite a field the user is typing in; undo/redo/open still update it otherwise.
     if (document.activeElement !== client && client.value !== m.header.client) client.value = m.header.client
     template.value = m.template
+    const logo = m.header.logoAssetId ? m.assets[m.header.logoAssetId] : undefined
+    logoName.textContent = logo ? logo.name : 'PNG, JPG or SVG'
+    upload.textContent = logo ? 'Replace' : 'Upload logo'
+    removeLogo.hidden = !logo
     views.value = currentViewSet(m)
     for (const [c, b] of pageButtons) b.setAttribute('aria-checked', String(m.pageColor === c))
     for (const [n, b] of stripes.buttons) b.setAttribute('aria-checked', String(m.stripes === n))

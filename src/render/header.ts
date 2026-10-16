@@ -11,9 +11,18 @@ const FONT = 'Arimo, Arial, Helvetica, sans-serif'
 export const SAMPLE_RED = '#e0432b'
 
 const LOGO_BOX = { x: 24, y: 28, width: 336, height: 97 }
-// PYC/REWD: 117x33 box at 92,171, bold 21 text. DWU/Nutrio/Impact move it to suit their logos;
-// the model doesn't store logo dimensions yet, so the tag stays put.
-const TAG = { x: 92, y: 171, padX: 6, height: 33, baseline: 25, size: 21 }
+// PYC/REWD: 117x33 box at 92,171, bold 21 text. Under a short, wide logo (DWU) Peter moves it
+// up to y 117; tagY() decides from the logo's shape.
+const TAG = { x: 92, y: 171, highY: 117, padX: 6, height: 33, baseline: 25, size: 21 }
+const SHORT_LOGO = 60 // drawn height below which the logo counts as "short"
+
+/** Tag top: up close under a short, wide logo, otherwise Peter's usual spot. */
+export function tagY(m: Mockup): number {
+  const a = m.header.logoAssetId ? m.assets[m.header.logoAssetId] : undefined
+  if (!a?.width || !a.height) return TAG.y
+  const drawn = Math.min(LOGO_BOX.height, (LOGO_BOX.width * a.height) / a.width) // "contain" fit
+  return drawn < SHORT_LOGO ? TAG.highY : TAG.y
+}
 
 // 1 column (DWU): bold 30 title and 21px specs at x 400, lines every 25 units.
 // 2 columns (PYC): regular 28 title at 340, bulleted 15px columns at 340 and 650, 17 units apart.
@@ -75,11 +84,12 @@ function tag(m: Mockup): SVGElement {
   if (t.mode === 'sample') {
     const label = `SAMPLE ${t.n}`
     const w = approxWidth(label, TAG.size) * 1.08 + TAG.padX * 2 // bold runs ~8% wider
+    const y = tagY(m)
     g.append(
-      el('rect', { x: TAG.x, y: TAG.y, width: w, height: TAG.height, fill: SAMPLE_RED }),
+      el('rect', { x: TAG.x, y, width: w, height: TAG.height, fill: SAMPLE_RED }),
       text(label, {
         x: TAG.x + w / 2,
-        y: TAG.y + TAG.baseline,
+        y: y + TAG.baseline,
         'text-anchor': 'middle',
         'font-size': TAG.size,
         'font-weight': 700,

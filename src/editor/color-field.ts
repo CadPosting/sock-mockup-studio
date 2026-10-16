@@ -10,8 +10,8 @@ const BASICS = ['#ffffff', '#000000', '#808080']
 const MAX_SWATCHES = 16
 
 /**
- * Swatches in brief order: brand palette colours (logo colours join these in task 11), then
- * colours already used in this mockup, then white/black/grey.
+ * Swatches in brief order: the logo's colours, then the brand palette table, then colours
+ * already used in this mockup, then white/black/grey.
  */
 export function swatches(m: Mockup): string[] {
   const used = [
@@ -21,7 +21,8 @@ export function swatches(m: Mockup): string[] {
     ),
     ...m.placements.flatMap((p) => (p.content.type === 'text' ? [p.content.color.hex] : [])),
   ]
-  const all = [...m.header.palette.rows.map((r) => r.hex), ...used, ...BASICS].map((x) => x.toLowerCase())
+  const logo = m.header.logoAssetId ? (m.assets[m.header.logoAssetId]?.palette ?? []) : []
+  const all = [...logo, ...m.header.palette.rows.map((r) => r.hex), ...used, ...BASICS].map((x) => x.toLowerCase())
   return [...new Set(all)].slice(0, MAX_SWATCHES)
 }
 

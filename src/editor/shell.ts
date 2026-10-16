@@ -3,7 +3,10 @@
 // Hover/selection highlights are CSS classes on the rendered nodes, styled by the page's CSS,
 // so they can never end up in an export (B1.4).
 
+import { newId } from '../model/defaults'
 import type { ZoneId } from '../model/types'
+import { checkLogoFile } from '../io/upload'
+import { readImage } from '../util/palette'
 import { render } from '../render/sheet'
 import type { Store } from '../store/store'
 import { h } from './dom'
@@ -11,6 +14,7 @@ import { createInspector } from './inspector'
 import { renderLayers } from './layers'
 import { DEFAULT_GRIP, DEFAULT_MOTIF } from './panels'
 import { createSelection, type Selection } from './selection'
+import { createToasts } from './toast'
 
 function button(label: string, opts: { title?: string; primary?: boolean; disabled?: boolean } = {}) {
   return h(
@@ -75,13 +79,51 @@ export function mountEditor(root: HTMLElement, store: Store) {
   const banner = h('div', { class: 'banner', role: 'status', hidden: true }, 'Draft not autosaved — use Save.')
   const layers = h('aside', { class: 'panel panel--layers', 'aria-label': 'Layers' })
   const sheet = h('div', { class: 'sheet' })
+  const svgHolder = h('div', { class: 'sheet__svg' })
+  // Editor-only drop box over the header logo spot (app-flow "No logo yet"). It's HTML on top
+  // of the sheet, not part of the SVG, so it can never be exported.
+  const dropBox = h('button', { type: 'button', class: 'logo-drop', title: 'Upload the client logo' }, 'Drop logo here')
+  sheet.append(svgHolder, dropBox)
   const stage = h('main', { class: 'stage' }, sheet)
-  const inspector = createInspector(store, selection)
+  // Logo upload: one hidden file input shared by the Upload button and the drop box.
+  const fileInput = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/svg+xml', hidden: true })
+  const pickLogo = () => fileInput.click()
+  const inspector = createInspector(store, selection, pickLogo)
   const right = h('aside', { class: 'panel panel--inspector', 'aria-label': 'Inspector' }, inspector.root)
   const small = h('div', { class: 'too-small' }, 'The editor needs a screen at least 1024 px wide. Exported mockups can be viewed on any device.')
 
   const app = h('div', { class: 'editor' }, topbar, banner, h('div', { class: 'workspace' }, layers, stage, right))
-  root.replaceChildren(app, small)
+  root.replaceChildren(app, small, fileInput)
+  const toast = createToasts(app)
+
+  async function uploadLogo(file: File) {
+    const checked = await checkLogoFile(file)
+    if (!checked.ok) return toast(checked.message, 'error')
+    try {
+      const { width, height, palette } = await readImage(checked.dataUrl)
+      const asset = { name: file.name.slice(0, 200), mime: checked.mime, dataUrl: checked.dataUrl, width, height, palette }
+      store.dispatch({ type: 'setLogo', id: newId('logo'), asset })
+    } catch {
+      toast("That image couldn't be read. Try exporting it again as PNG.", 'error')
+    }
+  }
+  fileInput.addEventListener('change', () => {
+    const f = fileInput.files?.[0]
+    fileInput.value = '' // so picking the same file again still fires change
+    if (f) void uploadLogo(f)
+  })
+  dropBox.addEventListener('click', pickLogo)
+  dropBox.addEventListener('dragover', (e) => {
+    e.preventDefault()
+    dropBox.classList.add('logo-drop--over')
+  })
+  dropBox.addEventListener('dragleave', () => dropBox.classList.remove('logo-drop--over'))
+  dropBox.addEventListener('drop', (e) => {
+    e.preventDefault()
+    dropBox.classList.remove('logo-drop--over')
+    const f = e.dataTransfer?.files[0]
+    if (f) void uploadLogo(f)
+  })
 
   layersToggle.addEventListener('click', () => app.classList.toggle('editor--layers-open'))
 
@@ -107,7 +149,7 @@ export function mountEditor(root: HTMLElement, store: Store) {
     hoverZone = null
     paintHighlights()
   })
-  sheet.addEventListener('click', (e) => {
+  svgHolder.addEventListener('click', (e) => {
     const z = zoneOf(e)
     selection.set(z ? { kind: 'zone', zone: z } : null) // clicking empty sheet deselects
   })
@@ -135,7 +177,8 @@ export function mountEditor(root: HTMLElement, store: Store) {
       selection.set(null)
       return // selection.set triggers update again
     }
-    sheet.replaceChildren(render(m))
+    svgHolder.replaceChildren(render(m))
+    dropBox.hidden = Boolean(m.header.logoAssetId)
     paintHighlights()
     layers.replaceChildren(renderLayers(m, selectKey(selection.get())))
     inspector.sync(m)
@@ -166,5 +209,6 @@ export function mountEditor(root: HTMLElement, store: Store) {
       banner.hidden = ok
     },
     selection,
+    uploadLogo,
   }
 }

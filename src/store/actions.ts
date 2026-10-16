@@ -26,6 +26,8 @@ export type Action =
   | { type: 'removeSpec'; id: string }
   | { type: 'moveSpec'; id: string; to: number }
   | { type: 'addAsset'; id: string; asset: Asset }
+  | { type: 'setLogo'; id: string; asset: Asset }
+  | { type: 'removeLogo' }
 
 const PROFILE_PAIR: Record<string, 'left' | 'right'> = { left: 'right', right: 'left' }
 
@@ -145,5 +147,14 @@ export function apply(m: Mockup, a: Action): Mockup {
 
     case 'addAsset':
       return { ...m, assets: { ...m.assets, [a.id]: a.asset } }
+
+    // Upload + use as the header logo in one undo step.
+    case 'setLogo':
+      return { ...m, assets: { ...m.assets, [a.id]: a.asset }, header: { ...m.header, logoAssetId: a.id } }
+    case 'removeLogo': {
+      // The asset itself stays: a placement may still use the same image on the sock.
+      const { logoAssetId: _, ...header } = m.header
+      return m.header.logoAssetId ? { ...m, header } : m
+    }
   }
 }

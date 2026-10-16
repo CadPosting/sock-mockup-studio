@@ -99,6 +99,11 @@ const assetSchema = z
     name: shortText,
     mime: z.enum(['image/png', 'image/jpeg', 'image/svg+xml']),
     dataUrl: z.string().max(MAX_DATA_URL_LENGTH),
+    // Read once at upload: natural size (places the SAMPLE tag under the logo) and the logo's
+    // main colours (offered first in every swatch row, PRD 5.5).
+    width: z.number().int().min(1).max(20000).optional(),
+    height: z.number().int().min(1).max(20000).optional(),
+    palette: z.array(hex).max(8).optional(),
   })
   .refine((a) => a.dataUrl.startsWith(`data:${a.mime};base64,`), {
     message: 'asset data does not match its declared image type',
