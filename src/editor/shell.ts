@@ -78,7 +78,7 @@ export function mountEditor(root: HTMLElement, store: Store) {
     if (!store.get().patterns.gripDots) store.dispatch({ type: 'setGripDots', gripDots: structuredClone(DEFAULT_GRIP) })
     selection.set({ kind: 'gripDots' })
   })
-  const motifBtn = button('Motif', { title: 'Repeat a letter or word across the sock' })
+  const motifBtn = button('Motif', { title: 'Repeat a letter, word or image across the sock' })
   motifBtn.addEventListener('click', () => {
     if (!store.get().patterns.motif) store.dispatch({ type: 'setMotif', motif: structuredClone(DEFAULT_MOTIF) })
     selection.set({ kind: 'motif' })
@@ -137,6 +137,7 @@ export function mountEditor(root: HTMLElement, store: Store) {
   const pickLogo = () => fileInput.click()
   const inspector = createInspector(store, selection, pickLogo, lifetime.signal, (name) =>
     toast(`Switched to ${name}. Spec lines reset to its defaults (Ctrl+Z to undo).`),
+    (message) => toast(message, 'error'),
   )
   const right = h('aside', { class: 'panel panel--inspector', 'aria-label': 'Inspector' }, inspector.root)
   const small = h('div', { class: 'too-small' }, 'The editor needs a screen at least 1024 px wide. Exported mockups can be viewed on any device.')

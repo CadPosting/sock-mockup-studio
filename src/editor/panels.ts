@@ -2,6 +2,8 @@
 // These are rebuilt from state whenever it changes (unless the user is mid-edit in one of them),
 // which keeps them simple: no per-control syncing.
 
+import { checkLogoFile } from '../io/upload'
+import { newId } from '../model/defaults'
 import { PATTERN_TYPES } from '../model/schema'
 import type { ColorRef, GripDots, Motif, ZoneId, ZonePattern } from '../model/types'
 import type { Store } from '../store/store'
@@ -10,6 +12,7 @@ import { h } from './dom'
 import { ZONE_NAMES } from './layers'
 import { sameLook } from '../render/patterns'
 import type { SelectionStore } from './selection'
+import { readImage } from '../util/palette'
 
 const PATTERN_NAMES: Record<(typeof PATTERN_TYPES)[number], string> = {
   stripes: 'Stripes',
@@ -162,13 +165,48 @@ export function gripPanel(store: Store, selection: SelectionStore): HTMLElement 
   )
 }
 
-export function motifPanel(store: Store, selection: SelectionStore): HTMLElement {
+export function motifPanel(store: Store, selection: SelectionStore, onError?: (message: string) => void): HTMLElement {
   const m = store.get()
   const mo = m.patterns.motif
   if (!mo) return h('div')
   const set = (patch: Partial<Motif>) => store.dispatch({ type: 'setMotif', motif: { ...(store.get().patterns.motif ?? mo), ...patch } })
   const textNow = () => (store.get().patterns.motif ?? mo).content as Extract<Motif['content'], { type: 'text' }>
   const parts: Node[] = [h('h2', { class: 'inspector__title' }, 'Repeat motif')]
+
+  // What repeats: a letter/word, or an image (the header logo or another uploaded file).
+  const file = h('input', { type: 'file', accept: '.png,.jpg,.jpeg,.svg', hidden: true }) // not 'image/…', so it never matches the logo picker
+  file.addEventListener('change', async () => {
+    const f = file.files?.[0]
+    file.value = ''
+    if (!f) return
+    // Same checks as a logo upload: magic bytes, size cap, SVG allowlist rebuild.
+    const checked = await checkLogoFile(f)
+    if (!checked.ok) return onError?.(checked.message)
+    try {
+      const read = await readImage(checked.dataUrl)
+      const k = Math.min(1, 20000 / Math.max(read.width, read.height))
+      const id = newId('asset')
+      const asset = { name: f.name.slice(0, 200), mime: checked.mime, dataUrl: checked.dataUrl, width: Math.max(1, Math.round(read.width * k)), height: Math.max(1, Math.round(read.height * k)), palette: read.palette }
+      store.dispatch({ type: 'addAsset', id, asset })
+      set({ content: { type: 'image', assetId: id } })
+    } catch {
+      onError?.("That image couldn't be read. Try exporting it again as PNG.")
+    }
+  })
+  const logoId = m.header.logoAssetId
+  const kindBtns = h('div', { class: 'segmented', role: 'radiogroup', 'aria-label': 'Repeat' })
+  const useText = h('button', { type: 'button', class: 'segmented__btn', role: 'radio', 'aria-checked': String(mo.content.type === 'text') }, 'Letter or word')
+  useText.addEventListener('click', () => mo.content.type !== 'text' && set({ content: DEFAULT_MOTIF.content }))
+  kindBtns.append(useText)
+  if (logoId) {
+    const useLogo = h('button', { type: 'button', class: 'segmented__btn', role: 'radio', 'aria-checked': String(mo.content.type === 'image' && mo.content.assetId === logoId) }, 'Logo')
+    useLogo.addEventListener('click', () => set({ content: { type: 'image', assetId: logoId } }))
+    kindBtns.append(useLogo)
+  }
+  const upload = h('button', { type: 'button', class: 'segmented__btn', 'data-action': 'motif-image', role: 'radio', 'aria-checked': String(mo.content.type === 'image' && mo.content.assetId !== logoId) }, 'Image…')
+  upload.addEventListener('click', () => file.click())
+  kindBtns.append(upload, file)
+  parts.push(h('div', { class: 'field' }, h('span', { class: 'field__label' }, 'Repeat'), kindBtns))
 
   if (mo.content.type === 'text') {
     const content = mo.content

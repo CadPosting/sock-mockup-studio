@@ -78,7 +78,18 @@ const LAYOUT = {
   1: { titleX: 400, titleSize: 30, titleBaseline: 85, cols: [400], firstBaseline: 129, lineHeight: 25, size: 21, wrapWidth: 600 },
   2: { titleX: 340, titleSize: 28, titleBaseline: 86, cols: [340, 650], firstBaseline: 119, lineHeight: 17, size: 15, wrapWidth: 270 },
 } as const
+type Layout = { [K in keyof (typeof LAYOUT)[1]]: (typeof LAYOUT)[1][K] extends readonly number[] ? readonly number[] : number }
+// With the compact palette in the top right, the title and specs move left to make room.
+const LAYOUT_WITH_PALETTE = {
+  1: { ...LAYOUT[1], titleX: 330, cols: [330], wrapWidth: 385, size: 16, lineHeight: 20 },
+  2: { ...LAYOUT[2], titleX: 330, cols: [330, 525], wrapWidth: 180 },
+} as const
 const BULLET_INDENT = 22
+
+/** Peter's StFX sheet: a palette and nothing else, so the table gets the whole right side. */
+const paletteOnly = (m: Mockup) => !m.header.title.trim() && !m.header.specs.some((r) => r.visible)
+const hasPalette = (m: Mockup) => m.header.palette.show && m.header.palette.rows.length > 0
+const layoutFor = (m: Mockup): Layout => (hasPalette(m) && !paletteOnly(m) ? LAYOUT_WITH_PALETTE : LAYOUT)[m.header.columns]
 
 function text(content: string, attrs: Record<string, string | number>): SVGTextElement {
   const t = el('text', { 'font-family': FONT, fill: '#000000', ...attrs })
@@ -180,8 +191,7 @@ function tag(m: Mockup): SVGElement {
 }
 
 /** One spec row as a <text> with one <tspan> per wrapped line. */
-function specRow(row: SpecRow, x: number, y: number, cols: 1 | 2): { node: SVGTextElement; lines: number; underline?: SVGLineElement } {
-  const L = LAYOUT[cols]
+function specRow(row: SpecRow, x: number, y: number, cols: 1 | 2, L: Layout): { node: SVGTextElement; lines: number; underline?: SVGLineElement } {
   const t = el('text', { 'font-family': FONT, 'font-size': L.size, fill: '#000000', 'data-field': `spec:${row.id}` })
   const indent = cols === 2 ? BULLET_INDENT : 0
   const labelText = row.label ? `${row.label}:` : ''
@@ -228,7 +238,7 @@ function specRow(row: SpecRow, x: number, y: number, cols: 1 | 2): { node: SVGTe
 
 function specs(m: Mockup): SVGElement {
   const { columns } = m.header
-  const L = LAYOUT[columns]
+  const L = layoutFor(m)
   const rows = m.header.specs.filter((r) => r.visible)
   // Peter's 2-column sheets put the smaller half on the left (PYC 4|5, REWD 4|4, Nutrio 6|6).
   const split = columns === 2 ? Math.floor(rows.length / 2) : rows.length
@@ -237,7 +247,7 @@ function specs(m: Mockup): SVGElement {
   groups.forEach((group, c) => {
     let y = L.firstBaseline
     for (const row of group) {
-      const { node, lines, underline } = specRow(row, L.cols[c], y, columns)
+      const { node, lines, underline } = specRow(row, L.cols[c], y, columns, L)
       g.append(node)
       if (underline) g.append(underline)
       y += lines * L.lineHeight
@@ -250,8 +260,9 @@ function specs(m: Mockup): SVGElement {
 const PAL = { swatchX: 543, cmykX: 595, rgbX: 748, hexX: 866, ruleEnd: 928, headerY: 88, firstY: 133, step: 43 }
 
 function palette(m: Mockup): SVGElement | null {
-  const { show, rows } = m.header.palette
-  if (!show || rows.length === 0) return null
+  if (!hasPalette(m)) return null
+  if (!paletteOnly(m)) return compactPalette(m)
+  const { rows } = m.header.palette
   const g = el('g', { 'data-part': 'palette', 'font-family': FONT })
   const small = { 'font-size': 10, fill: '#333333' }
   g.append(
@@ -276,6 +287,25 @@ function palette(m: Mockup): SVGElement | null {
   return g
 }
 
+// Compact palette, top right (x 735-1004): swatch, name, then CMYK · RGB · HEX in small type.
+// 8 rows (the editor's cap) fit between the top of the sheet and the view labels.
+const CPAL = { x: 735, textX: 757, firstY: 34, step: 27 }
+
+function compactPalette(m: Mockup): SVGElement {
+  const g = el('g', { 'data-part': 'palette', 'font-family': FONT })
+  m.header.palette.rows.forEach((row, i) => {
+    const y = CPAL.firstY + i * CPAL.step
+    const [r, gr, b] = hexToRgb(row.hex)
+    const cmyk = row.cmyk || `${hexToCmyk(row.hex).map((v, j) => `${v}${'CMYK'[j]}`).join(' ')} (approx.)`
+    g.append(
+      el('rect', { x: CPAL.x, y, width: 16, height: 16, fill: row.hex, stroke: '#dddddd', 'stroke-width': 0.5 }),
+      text(row.name, { x: CPAL.textX, y: y + 7, 'font-size': 11, 'font-weight': 700, fill: '#333333', 'data-field': `pal-name:${i}` }),
+      text(`${cmyk} · ${r}R ${gr}G ${b}B · ${row.hex.slice(1).toLowerCase()}`, { x: CPAL.textX, y: y + 18, 'font-size': 8, fill: '#555555', 'data-field': `pal-cmyk:${i}` }),
+    )
+  })
+  return g
+}
+
 export function renderHeader(m: Mockup): SVGGElement {
   const g = el('g', { 'data-part': 'header' })
   const h = m.header
@@ -284,7 +314,7 @@ export function renderHeader(m: Mockup): SVGGElement {
   g.append(tag(m))
   g.append(
     text(h.title, {
-      x: LAYOUT[h.columns].titleX,
+      x: layoutFor(m).titleX,
       y: LAYOUT[h.columns].titleBaseline,
       'font-size': LAYOUT[h.columns].titleSize,
       'font-weight': h.titleBold ? 700 : 400,

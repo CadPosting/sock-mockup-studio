@@ -46,6 +46,7 @@ export function createInspector(
   pickLogo: () => void,
   signal: AbortSignal,
   onStyleApplied: (name: string) => void = () => {},
+  onError: (message: string) => void = () => {},
 ) {
   const logoName = h('span', { class: 'logo-field__name' })
   const upload = h('button', { type: 'button', class: 'btn btn--outline' }, 'Upload logo')
@@ -212,7 +213,7 @@ export function createInspector(
             ? headerPanel(store)
           : sel.kind === 'gripDots'
             ? gripPanel(store, selection)
-            : motifPanel(store, selection),
+            : motifPanel(store, selection, onError),
     )
   }
 

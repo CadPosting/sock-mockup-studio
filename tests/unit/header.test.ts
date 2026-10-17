@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { STYLE_PRESETS } from '../../src/model/defaults'
-import { renderHeader, wrap } from '../../src/render/header'
+import { approxWidth, renderHeader, wrap } from '../../src/render/header'
 import { hexToCmyk } from '../../src/util/color'
 
 const PNG_1PX =
@@ -86,5 +86,17 @@ describe('header', () => {
     expect(t).toContain('0R 27G 64B')
     expect(t).toContain('(approx.)')
     expect(hexToCmyk('#000000')).toEqual([0, 0, 0, 100])
+  })
+
+  it('palette with specs: compact table top right, specs moved left and kept clear of it', () => {
+    const m = STYLE_PRESETS.crew.make()
+    m.header.title = 'Argyle design'
+    m.header.specs[0].value = '80% combed cotton, 17% polyamide, 3% elastane, midcalf, seamless toe'
+    m.header.palette = { show: true, rows: [{ name: 'Kerby blue', hex: '#003a5f', cmyk: '' }] }
+    const g = renderHeader(m)
+    expect(g.querySelector('[data-part="palette"] rect')!.getAttribute('x')).toBe('735')
+    const tspans = [...g.querySelectorAll('[data-part="specs"] tspan[x]')]
+    expect(tspans.length).toBeGreaterThan(1) // the long line wrapped
+    for (const t of tspans) expect(Number(t.getAttribute('x')) + approxWidth(t.textContent!, 16)).toBeLessThan(735)
   })
 })
