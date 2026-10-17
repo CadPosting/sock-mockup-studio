@@ -7,7 +7,7 @@ import { embeddedFontCss } from './fonts'
 
 export const EXPORT_SCALE = 2 // 2048 x 1536 (PRD 5.9)
 
-const slug = (s: string) =>
+export const slug = (s: string) =>
   s
     .normalize('NFKD')
     .replace(/[̀-ͯ]/g, '')

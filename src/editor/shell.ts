@@ -6,13 +6,13 @@
 import { newId, STYLE_PRESETS } from '../model/defaults'
 import type { Mockup, Placement, ZoneId } from '../model/types'
 import { copyPng, downloadBlob, exportFileName, exportPng } from '../io/export-png'
-import { isMockupFile, nextSample, saveWorkbookFile } from '../io/file'
+import { FILE_EXT, isMockupFile, nextSample, saveWorkbookFile, workbookFileName } from '../io/file'
 import { checkLogoFile } from '../io/upload'
 import { readImage } from '../util/palette'
 import { render } from '../render/sheet'
 import type { Store } from '../store/store'
 import { createWorkbook } from '../store/workbook'
-import { defaultSheetName, type WorkbookData } from '../model/workbook'
+import { defaultSheetName, MAX_FILE_NAME, type WorkbookData } from '../model/workbook'
 import { createSheetTabs } from './sheet-tabs'
 import { h } from './dom'
 import { viewCentre } from './geometry'
@@ -165,13 +165,48 @@ export function mountEditor(root: HTMLElement, store: Store) {
   }, listen)
 
 
+  // File name, centre of the top bar: click to type a name. Empty = automatic (from the open
+  // sheet), shown as the placeholder. Used for Save and the PDF; PNGs stay named per sheet.
+  const fileNameInput = h('input', {
+    class: 'file-name__input',
+    type: 'text',
+    maxlength: String(MAX_FILE_NAME),
+    'aria-label': 'File name',
+    title: 'File name (click to rename)',
+    spellcheck: 'false',
+  })
+  const fileNameField = h('label', { class: 'file-name' }, fileNameInput, h('span', { class: 'file-name__ext', 'aria-hidden': 'true' }, `.${FILE_EXT}`))
+  const autoFileName = () => workbookFileName({ ...workbook.data(), name: '' }, FILE_EXT).slice(0, -(FILE_EXT.length + 1))
+  const syncFileName = () => {
+    fileNameInput.placeholder = autoFileName()
+    if (document.activeElement !== fileNameInput) fileNameInput.value = workbook.fileName()
+    // Size the box to its text, so the name sits centred without a wide empty field.
+    fileNameInput.style.width = `${Math.max(12, (fileNameInput.value || fileNameInput.placeholder).length + 1)}ch`
+  }
+  // Applied as you type, so Ctrl+S mid-edit saves under the new name; Esc puts the old one back.
+  let nameBefore = ''
+  fileNameInput.addEventListener('focus', () => (nameBefore = workbook.fileName()))
+  fileNameInput.addEventListener('input', () => {
+    workbook.setFileName(fileNameInput.value)
+    fileNameInput.style.width = `${Math.max(12, (fileNameInput.value || fileNameInput.placeholder).length + 1)}ch`
+  })
+  fileNameInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') fileNameInput.blur()
+    if (e.key === 'Escape') {
+      workbook.setFileName(nameBefore)
+      fileNameInput.value = nameBefore
+      fileNameInput.blur()
+    }
+  })
+  fileNameInput.addEventListener('blur', syncFileName)
+
   const topbar = h(
     'header',
     { class: 'topbar' },
     group(mainMenu, layersToggle),
     group(undo, redo),
     group(addLogoBtn, addTextBtn, dots, motifBtn),
-    h('div', { class: 'topbar__spacer' }),
+    h('div', { class: 'topbar__spacer' }, fileNameField),
     group(exportMenu),
   )
 
@@ -278,7 +313,7 @@ export function mountEditor(root: HTMLElement, store: Store) {
     const sig = workbook.signature()
     if (lastSavedSig) return sig.length !== lastSavedSig.length || sig.some((x, i) => x !== lastSavedSig![i])
     const { sheets } = workbook.data()
-    return sheets.length > 1 || sheets.some((sh, i) => hasWork(sh.mockup) || sh.name !== defaultSheetName(sh.mockup, i))
+    return sheets.length > 1 || workbook.fileName() !== '' || sheets.some((sh, i) => hasWork(sh.mockup) || sh.name !== defaultSheetName(sh.mockup, i))
   }
 
   /** Finish a text edit / stop a drag before the document is replaced, so neither can write into it. */
@@ -438,7 +473,7 @@ export function mountEditor(root: HTMLElement, store: Store) {
       if (kind === 'pdf') {
         // Loaded on first use only: jsPDF + svg2pdf are most of the bundle (TDD §9).
         const { exportPdf } = await import('../io/export-pdf')
-        const pdfName = exportFileName(m, 'pdf')
+        const pdfName = workbookFileName(workbook.data(), 'pdf')
         // One page per sheet tab, in tab order: the factory gets every sample in one file.
         const all = workbook.data().sheets.map((sh) => sh.mockup)
         downloadBlob(await exportPdf(all), pdfName)
@@ -606,10 +641,11 @@ export function mountEditor(root: HTMLElement, store: Store) {
     overlay.draw()
     layers.replaceChildren(renderLayers(m, selectKey(selection.get())))
     inspector.sync(m)
+    syncFileName()
     undo.disabled = !store.canUndo()
     redo.disabled = !store.canRedo()
   }
-  const unsubscribe = [store.subscribe(update), selection.subscribe(update), workbook.subscribe(tabs.draw)]
+  const unsubscribe = [store.subscribe(update), selection.subscribe(update), workbook.subscribe(tabs.draw), workbook.subscribe(syncFileName)]
   lifetime.signal.addEventListener('abort', () => unsubscribe.forEach((u) => u()))
   update()
 

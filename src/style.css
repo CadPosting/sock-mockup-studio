@@ -983,3 +983,56 @@ body {
   border: 0;
   border-top: 1px solid var(--line);
 }
+
+/* File name, centred in the top bar; looks like plain text until hovered or clicked. */
+.topbar__spacer {
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
+
+.file-name {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  max-width: 100%;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  cursor: text;
+  transition: border-color 0.12s, background 0.12s;
+}
+
+.file-name:hover {
+  border-color: var(--line);
+  background: var(--bg);
+}
+
+.file-name:focus-within {
+  border-color: var(--accent);
+  background: var(--panel);
+}
+
+.file-name__input {
+  min-width: 0;
+  max-width: 48ch;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  text-align: right;
+}
+
+.file-name__input::placeholder {
+  color: var(--text);
+  opacity: 0.85;
+}
+
+.file-name__ext {
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+}

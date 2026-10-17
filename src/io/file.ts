@@ -3,7 +3,7 @@
 
 import type { Mockup } from '../model/types'
 import { serializeWorkbook, type WorkbookData } from '../model/workbook'
-import { downloadBlob, exportFileName } from './export-png'
+import { downloadBlob, exportFileName, slug } from './export-png'
 
 export const FILE_EXT = 'sockmockup.json'
 
@@ -12,9 +12,15 @@ export function serializeMockup(m: Mockup): string {
   return JSON.stringify(m)
 }
 
-/** Save every sheet tab in one file, named after the open sheet. */
+/** The file's download name: the name the user typed, else one made from the open sheet. */
+export function workbookFileName(wb: WorkbookData, ext: string): string {
+  const typed = wb.name ? slug(wb.name) : ''
+  return typed ? `${typed}.${ext}` : exportFileName(wb.sheets[wb.active].mockup, ext)
+}
+
+/** Save every sheet tab in one file. */
 export function saveWorkbookFile(wb: WorkbookData): string {
-  const name = exportFileName(wb.sheets[wb.active].mockup, FILE_EXT)
+  const name = workbookFileName(wb, FILE_EXT)
   downloadBlob(new Blob([serializeWorkbook(wb)], { type: 'application/json' }), name)
   return name
 }

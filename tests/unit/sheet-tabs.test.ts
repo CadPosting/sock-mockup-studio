@@ -185,3 +185,45 @@ describe('Add sheet', () => {
     expect(fresh.zones.leg.hex).not.toBe('#00aeef')
   })
 })
+
+describe('file name in the top bar', () => {
+  it('shows the automatic name until you type one; Save and the file use it; Esc puts it back', async () => {
+    const { root, editor, btn } = setup()
+    const input = root.querySelector<HTMLInputElement>('.file-name__input')!
+    expect(input.value).toBe('')
+    expect(input.placeholder).toBe('mockup-crew-sample1')
+    const type = (v: string) => {
+      input.dispatchEvent(new FocusEvent('focus'))
+      input.value = v
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+    type('Mount Royal University socks')
+    expect(editor.isUnsaved()).toBe(true)
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    const data = editor.workbook.data()
+    expect(data.name).toBe('Mount Royal University socks')
+    expect(readWorkbook(JSON.parse(serializeWorkbook(data))).name).toBe('Mount Royal University socks')
+    // Save downloads under the typed name.
+    const names: string[] = []
+    const orig = HTMLAnchorElement.prototype.click
+    HTMLAnchorElement.prototype.click = function () {
+      names.push(this.download)
+    }
+    URL.createObjectURL ??= () => 'blob:x'
+    URL.revokeObjectURL ??= () => {}
+    btn('Save file').click()
+    HTMLAnchorElement.prototype.click = orig
+    expect(names).toEqual(['mount-royal-university-socks.sockmockup.json'])
+    type('Oops')
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    expect(editor.workbook.fileName()).toBe('Mount Royal University socks')
+  })
+
+  it('a tampered file name is refused; an old file without one opens fine', () => {
+    const m = STYLE_PRESETS.crew.make()
+    const good = { format: WORKBOOK_FORMAT, version: 1, active: 0, sheets: [{ name: 'A', mockup: m }] }
+    expect(readWorkbook(good).name).toBeUndefined()
+    expect(() => readWorkbook({ ...good, name: 5 })).toThrow()
+    expect(() => readWorkbook({ ...good, name: 'x'.repeat(81) })).toThrow()
+  })
+})

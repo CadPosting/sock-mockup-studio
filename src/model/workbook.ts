@@ -7,10 +7,12 @@ import type { Mockup } from './types'
 
 export const MAX_SHEETS = 50
 export const MAX_SHEET_NAME = 40
+export const MAX_FILE_NAME = 80
 export const WORKBOOK_FORMAT = 'sockmockup-workbook'
 
 export type SheetData = { name: string; mockup: Mockup }
-export type WorkbookData = { sheets: SheetData[]; active: number }
+/** `name` is the file name the user typed; empty means automatic (from the open sheet). */
+export type WorkbookData = { sheets: SheetData[]; active: number; name?: string }
 
 const DAMAGED = "This file isn't a Sock Mockup Studio file (or it's damaged)."
 
@@ -24,9 +26,13 @@ export function cleanSheetName(name: string): string {
   return name.replace(/\s+/g, ' ').trim().slice(0, MAX_SHEET_NAME)
 }
 
+export function cleanFileName(name: string): string {
+  return name.replace(/\.sockmockup\.json$|\.json$/i, '').replace(/\s+/g, ' ').trim().slice(0, MAX_FILE_NAME)
+}
+
 /** The workbook as it's stored: in a file (as JSON) and in the autosaved draft. */
 export function workbookRecord(wb: WorkbookData) {
-  return { format: WORKBOOK_FORMAT, version: 1, active: wb.active, sheets: wb.sheets }
+  return { format: WORKBOOK_FORMAT, version: 1, active: wb.active, sheets: wb.sheets, ...(wb.name ? { name: wb.name } : {}) }
 }
 
 export function serializeWorkbook(wb: WorkbookData): string {
@@ -45,8 +51,9 @@ export function readWorkbook(raw: unknown): WorkbookData {
     return { sheets: [{ name: defaultSheetName(mockup, 0), mockup }], active: 0 }
   }
   if (typeof r.version !== 'number' || r.version > 1) throw new MockupFileError('This file was made by a newer version of the tool.')
-  const keys = Object.keys(r).sort().join(',')
+  const keys = Object.keys(r).filter((k) => k !== 'name').sort().join(',')
   if (keys !== 'active,format,sheets,version') throw new MockupFileError(DAMAGED)
+  if ('name' in r && (typeof r.name !== 'string' || r.name.length > MAX_FILE_NAME)) throw new MockupFileError(DAMAGED)
   if (!Array.isArray(r.sheets) || r.sheets.length === 0 || r.sheets.length > MAX_SHEETS) throw new MockupFileError(DAMAGED)
   const sheets = r.sheets.map((s: unknown, i): SheetData => {
     if (typeof s !== 'object' || s === null || Object.keys(s).sort().join(',') !== 'mockup,name') throw new MockupFileError(DAMAGED)
@@ -57,5 +64,6 @@ export function readWorkbook(raw: unknown): WorkbookData {
   })
   const active = r.active
   if (typeof active !== 'number' || !Number.isInteger(active) || active < 0 || active >= sheets.length) throw new MockupFileError(DAMAGED)
-  return { sheets, active }
+  const name = typeof r.name === 'string' ? cleanFileName(r.name) : ''
+  return name ? { sheets, active, name } : { sheets, active }
 }

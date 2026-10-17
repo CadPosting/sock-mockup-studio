@@ -2,7 +2,7 @@
 // before); the others are parked here as store snapshots, each with its own undo history.
 
 import { newId } from '../model/defaults'
-import { cleanSheetName, MAX_SHEETS, type SheetData, type WorkbookData } from '../model/workbook'
+import { cleanFileName, cleanSheetName, MAX_SHEETS, type SheetData, type WorkbookData } from '../model/workbook'
 import type { Store, StoreSnapshot } from './store'
 
 type Sheet = { id: string; name: string; snap: StoreSnapshot | null } // snap is null for the open sheet
@@ -12,6 +12,7 @@ export type Workbook = ReturnType<typeof createWorkbook>
 export function createWorkbook(store: Store, firstName: string) {
   let sheets: Sheet[] = [{ id: newId('sheet'), name: firstName, snap: null }]
   let activeId = sheets[0].id
+  let fileName = '' // empty = automatic
   const listeners = new Set<() => void>()
   const emit = () => listeners.forEach((fn) => fn())
   const index = (id: string) => sheets.findIndex((s) => s.id === id)
@@ -35,6 +36,14 @@ export function createWorkbook(store: Store, firstName: string) {
     list: () => sheets.map((s) => ({ id: s.id, name: s.name, active: s.id === activeId })),
     activeId: () => activeId,
     canAdd: () => sheets.length < MAX_SHEETS,
+    fileName: () => fileName,
+
+    setFileName(name: string) {
+      const clean = cleanFileName(name)
+      if (clean === fileName) return
+      fileName = clean
+      emit()
+    },
 
     switchTo(id: string) {
       if (id === activeId || index(id) < 0) return
@@ -79,11 +88,13 @@ export function createWorkbook(store: Store, firstName: string) {
       return {
         sheets: sheets.map((s) => ({ name: s.name, mockup: s.snap ? s.snap.state : store.get() })),
         active: index(activeId),
+        ...(fileName ? { name: fileName } : {}),
       }
     },
 
     /** Replace all sheets (open file, new mockup, resume draft). Every sheet starts a fresh history. */
     load(wb: WorkbookData) {
+      fileName = wb.name ?? ''
       sheets = wb.sheets.map((s) => ({ id: newId('sheet'), name: s.name, snap: { state: s.mockup, past: [], future: [] } }))
       activeId = sheets[Math.min(wb.active, sheets.length - 1)].id
       const target = sheets[index(activeId)]
@@ -94,7 +105,7 @@ export function createWorkbook(store: Store, firstName: string) {
 
     /** Identity of what's saved: sheet names plus each sheet's state object (edits make new ones). */
     signature(): unknown[] {
-      return sheets.flatMap((s) => [s.name, s.snap ? s.snap.state : store.get()])
+      return [fileName, ...sheets.flatMap((s) => [s.name, s.snap ? s.snap.state : store.get()])]
     },
   }
 }
