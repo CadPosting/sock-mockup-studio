@@ -29,14 +29,14 @@ describe('start dialog: never lose work silently', () => {
   it('edits to specs, title, tag or grip dots count as work too', () => {
     const { root, store, btn } = setup()
     store.dispatch({ type: 'updateSpec', id: store.get().header.specs[0].id, patch: { value: 'edited' } })
-    btn('☰ Menu')!.click()
+    btn('☰ Menu')!.click(); btn('New mockup…')!.click()
     root.querySelector<HTMLButtonElement>('.start__card[data-style="crew"]')!.click()
     expect(root.querySelector<HTMLElement>('.start__confirm')!.hidden).toBe(false)
   })
 
   it('an untouched style is replaced straight away (nothing to lose)', () => {
     const { root, store, btn } = setup()
-    btn('☰ Menu')!.click()
+    btn('☰ Menu')!.click(); btn('New mockup…')!.click()
     root.querySelector<HTMLButtonElement>('.start__card[data-style="dress-crew"]')!.click()
     expect(root.querySelector('.start')).toBeNull()
     expect(store.get().header.tag.mode).toBe('code')
@@ -44,8 +44,8 @@ describe('start dialog: never lose work silently', () => {
 
   it('only one menu at a time, and the editor behind it is inert', () => {
     const { root, btn } = setup()
-    btn('☰ Menu')!.click()
-    btn('☰ Menu')!.click()
+    btn('☰ Menu')!.click(); btn('New mockup…')!.click()
+    btn('☰ Menu')!.click(); btn('New mockup…')!.click()
     expect(root.querySelectorAll('.start')).toHaveLength(1)
     expect(root.querySelector('.workspace')!.hasAttribute('inert')).toBe(true)
     btn('Back to current mockup')!.click()
@@ -76,7 +76,7 @@ describe('file and upload checks', () => {
 
   it('a pending Open that finishes after the menu closed does nothing', async () => {
     const { root, store, btn } = setup()
-    btn('☰ Menu')!.click()
+    btn('☰ Menu')!.click(); btn('New mockup…')!.click()
     const input = root.querySelector<HTMLInputElement>('.start input[type="file"]')!
     const m = STYLE_PRESETS['crew-grip'].make()
     Object.defineProperty(input, 'files', { value: [new File([JSON.stringify(m)], 'late.json')] })

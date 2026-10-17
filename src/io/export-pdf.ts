@@ -61,31 +61,38 @@ async function rasterizeSvgImages(svg: SVGSVGElement, scale = 4): Promise<void> 
   }
 }
 
-export async function exportPdf(m: Mockup): Promise<Blob> {
+/** One page per mockup (sheet tabs in order). */
+export async function exportPdf(input: Mockup | Mockup[]): Promise<Blob> {
+  const pages = Array.isArray(input) ? input : [input]
   const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: [SHEET.width, SHEET.height], compress: true })
-  for (const face of facesFor(m)) {
-    const ttf = TTF[`${face.family} ${face.weight}`]
+  const added = new Set<string>()
+  for (const face of pages.flatMap((m) => facesFor(m))) {
+    const key = `${face.family} ${face.weight}`
+    if (added.has(key)) continue
+    added.add(key)
+    const ttf = TTF[key]
     const file = `${face.family.replace(/\s+/g, '')}-${face.weight}.ttf`
     doc.addFileToVFS(file, await fetchBase64(ttf.url))
     doc.addFont(file, face.family, ttf.style)
   }
-  // svg2pdf falls back to Times without a word if a family isn't registered; refuse instead.
-  const svg = render(m)
   const registered = new Set(Object.keys(doc.getFontList()))
-  const missing = [...familiesUsed(svg)].filter((f) => !registered.has(f))
-  if (missing.length) throw new Error(`font not available for PDF: ${missing.join(', ')}`)
-
-  await rasterizeSvgImages(svg)
-  // svg2pdf reads computed styles, so the SVG must be in the document while it's converted.
-  const holder = document.createElement('div')
-  holder.style.cssText = 'position:fixed;left:-10000px;top:0;width:1024px;height:768px;visibility:hidden'
-  holder.append(svg)
-  document.body.append(holder)
-  try {
-    await svg2pdf(svg, doc, { x: 0, y: 0, width: SHEET.width, height: SHEET.height })
-  } finally {
-    holder.remove()
+  for (const [i, m] of pages.entries()) {
+    const svg = render(m)
+    const missing = [...familiesUsed(svg)].filter((f) => !registered.has(f))
+    if (missing.length) throw new Error(`font not available for PDF: ${missing.join(', ')}`)
+    await rasterizeSvgImages(svg)
+    if (i > 0) doc.addPage([SHEET.width, SHEET.height], 'landscape')
+    const holder = document.createElement('div')
+    holder.style.cssText = 'position:fixed;left:-10000px;top:0;width:1024px;height:768px;visibility:hidden'
+    holder.append(svg)
+    document.body.append(holder)
+    try {
+      await svg2pdf(svg, doc, { x: 0, y: 0, width: SHEET.width, height: SHEET.height })
+    } finally {
+      holder.remove()
+    }
   }
-  doc.setProperties({ title: m.header.client ? `${m.header.client} sock mockup` : 'Sock mockup', creator: 'Sock Mockup Studio' })
+  const client = pages[0].header.client
+  doc.setProperties({ title: client ? `${client} sock mockup` : 'Sock mockup', creator: 'Sock Mockup Studio' })
   return doc.output('blob')
 }

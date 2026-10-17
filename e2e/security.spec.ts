@@ -5,6 +5,12 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+/** File and sheet commands live in the ☰ Menu. */
+async function menu(page: Page, item: string) {
+  await page.click('.topbar__menu')
+  await page.click(`.menu__item:text-is("${item}")`)
+}
+
 const here = dirname(fileURLToPath(import.meta.url))
 const EVIL = join(here, 'fixtures', 'evil-logo.svg')
 
@@ -80,24 +86,29 @@ test('a tampered mockup file: injected HTML in text shows as text; an HTML "imag
   const m = await page.evaluate(() => JSON.parse(localStorage.getItem('x') ?? 'null'))
   void m
   // Build a valid file in the page from the app's own Save, then tamper with it.
-  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('button:text-is("Save")')])
-  const file = JSON.parse(readFileSync((await dl.path())!, 'utf8'))
+  const [dl] = await Promise.all([page.waitForEvent('download'), menu(page, 'Save file')])
+  // The saved file is a workbook; tamper with its one sheet, and with the tab name too.
+  const book = JSON.parse(readFileSync((await dl.path())!, 'utf8'))
+  const file = book.sheets[0].mockup
+  book.sheets[0].name = '<img src=x onerror=__pwned=1>'
   const evil = readFileSync(EVIL).toString('base64')
   file.assets = { evil: { name: 'x.svg', mime: 'image/svg+xml', dataUrl: `data:image/svg+xml;base64,${evil}` } }
   file.header.logoAssetId = 'evil'
   file.header.title = '<img src=x onerror="window.__pwned=\'title\'">Specs'
   file.header.specs[0].value = '<script>window.__pwned="spec"</script>'
   file.views[0].label = '"><svg onload="window.__pwned=\'label\'">'
-  await page.click('button:text-is("Open")')
-  await page.setInputFiles('input[type=file][accept^=".json"]', { name: 'tampered.sockmockup.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(file)) })
+  await menu(page, 'Open file…')
+  await page.setInputFiles('input[type=file][accept^=".json"]', { name: 'tampered.sockmockup.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(book)) })
+  await expect(page.locator('.sheet-tab__name')).toHaveText('<img src=x onerror=__pwned=1>')
+  await expect(page.locator('.sheet-tabs img')).toHaveCount(0)
   await expect(page.locator('.sheet [data-field="title"]')).toHaveText('<img src=x onerror="window.__pwned=\'title\'">Specs')
   await expect(page.locator('.sheet [data-field^="spec:"]').first()).toHaveText('<script>window.__pwned="spec"</script>')
   await exportBoth(page)
   expect(await w.pwned()).toEqual({ pwned: null, csp: [] })
   // An HTML page labelled as an SVG image is rejected whole: the mockup above stays.
   file.assets.evil = { name: 'x.svg', mime: 'image/svg+xml', dataUrl: `data:image/svg+xml;base64,${Buffer.from('<html><script>window.__pwned=1</script></html>').toString('base64')}` }
-  await page.click('button:text-is("Open")')
-  await page.setInputFiles('input[type=file][accept^=".json"]', { name: 'html.sockmockup.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(file)) })
+  await menu(page, 'Open file…')
+  await page.setInputFiles('input[type=file][accept^=".json"]', { name: 'html.sockmockup.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(book)) })
   await expect(page.locator('.toast--error').last()).toHaveText("This file isn't a Sock Mockup Studio file (or it's damaged).")
   await expect(page.locator('.sheet [data-field="title"]')).toContainText('Specs')
   expect(await w.pwned()).toEqual({ pwned: null, csp: [] })

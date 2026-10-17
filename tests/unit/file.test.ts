@@ -3,6 +3,7 @@ import { mountEditor } from '../../src/editor/shell'
 import { nextSample, serializeMockup } from '../../src/io/file'
 import { STYLE_PRESETS } from '../../src/model/defaults'
 import { migrate } from '../../src/model/schema'
+import { readWorkbook } from '../../src/model/workbook'
 import { render } from '../../src/render/sheet'
 import { createStore } from '../../src/store/store'
 
@@ -56,10 +57,10 @@ describe('save -> reopen (task 17)', () => {
 
   it('Save downloads client-template-sampleN.sockmockup.json with the whole mockup in it', async () => {
     const { store, btn } = setup(richMockup())
-    btn('Save').click()
+    btn('Save file').click()
     expect(downloads.map((d) => d.name)).toEqual(['mount-allison-crew-sample1.sockmockup.json'])
-    const back = migrate(JSON.parse(await downloads[0].blob.text()))
-    expect(back).toEqual(store.get())
+    const back = readWorkbook(JSON.parse(await downloads[0].blob.text()))
+    expect(back).toEqual({ sheets: [{ name: 'SAMPLE 1', mockup: store.get() }], active: 0 })
   })
 })
 
@@ -74,12 +75,12 @@ describe('next sample', () => {
     expect(nextSample(code).header.tag).toEqual(code.header.tag)
   })
 
-  it('"Dup → next" saves SAMPLE 1 to a file, then the editor is on SAMPLE 2 (unsaved)', async () => {
-    const { store, editor, btn } = setup(richMockup())
-    btn('Dup → next').click()
-    expect(downloads).toHaveLength(1)
-    expect(JSON.parse(await downloads[0].blob.text()).header.tag).toEqual({ mode: 'sample', n: 1 })
+  it('"Duplicate to new sheet" adds SAMPLE 2 in a new tab; SAMPLE 1 stays in its own tab; no download', () => {
+    const { root, store, editor, btn } = setup(richMockup())
+    btn('Duplicate to new sheet').click()
+    expect(downloads).toHaveLength(0)
     expect(store.get().header.tag).toEqual({ mode: 'sample', n: 2 })
+    expect([...root.querySelectorAll('.sheet-tab')].map((t) => t.textContent)).toEqual(['SAMPLE 1', 'SAMPLE 2×'])
     expect(editor.isUnsaved()).toBe(true)
   })
 })
@@ -90,7 +91,7 @@ describe('unsaved changes', () => {
     expect(editor.isUnsaved()).toBe(false)
     store.dispatch({ type: 'setZoneColor', zone: 'heel', color: { hex: '#862633' } })
     expect(editor.isUnsaved()).toBe(true)
-    btn('Save').click()
+    btn('Save file').click()
     expect(editor.isUnsaved()).toBe(false)
     store.dispatch({ type: 'setStripes', stripes: 2 })
     expect(editor.isUnsaved()).toBe(true)
@@ -158,19 +159,22 @@ describe('open', () => {
 })
 
 describe('Codex review of task 17', () => {
-  it('Dup -> next can be undone back to SAMPLE 1 (in case the save download was blocked)', () => {
-    const { store, btn } = setup(richMockup())
+  it('after Dup -> next, clicking the SAMPLE 1 tab brings it back exactly, with its undo history', () => {
+    const { root, store, btn } = setup(richMockup())
+    store.dispatch({ type: 'setStripes', stripes: 2 })
     const sample1 = store.get()
-    btn('Dup → next').click()
-    expect(store.get().header.tag).toEqual({ mode: 'sample', n: 2 })
-    store.undo()
+    btn('Duplicate to new sheet').click()
+    expect(store.canUndo()).toBe(false) // a new tab starts its own history
+    root.querySelector<HTMLElement>('.sheet-tab')!.click()
     expect(store.get()).toBe(sample1)
+    store.undo()
+    expect(store.get().stripes).not.toBe(2)
   })
 
   it('after a save, undoing back to the untouched style still counts as unsaved', () => {
     const { store, editor, btn } = setup()
     store.dispatch({ type: 'setZoneColor', zone: 'heel', color: { hex: '#862633' } })
-    btn('Save').click()
+    btn('Save file').click()
     store.undo() // back to the plain preset, which no longer matches the saved file
     expect(editor.isUnsaved()).toBe(true)
   })

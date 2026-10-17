@@ -44,6 +44,7 @@ Last checked: 2026-10-16 (engineering plan, task 20, then again after an adversa
 
 ### Opened files (`src/model/schema.ts`, `src/editor/start-dialog.ts`)
 
+- A file holds one or more sheet tabs (`src/model/workbook.ts`). The wrapper is checked exactly: known keys only, 1–50 sheets, names up to 40 characters, a valid open-tab index. Every sheet then goes through everything below, and one bad sheet rejects the whole file. Older single-mockup files open as one tab. Tab names are shown with `textContent` only (`e2e/security.spec.ts` tampers one).
 - Parsed with `JSON.parse`, then validated in full by a zod schema. One bad field rejects the whole file, so a broken file can never half-load over the current mockup. The message is "This file isn't a Sock Mockup Studio file (or it's damaged)."
 - Beyond the schema, `migrate()` also checks that:
   - IDs are unique plain tokens (`[A-Za-z0-9_-]`);

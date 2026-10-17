@@ -91,7 +91,17 @@ body {
 }
 
 /* Sheet fits the free space at 4:3 with a soft shadow on the grey surround. */
+/* Centre column: the sheet, with its tabs along the bottom like a spreadsheet. */
+.stage-col {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .stage {
+  flex: 1;
+  min-height: 0;
   min-width: 0;
   display: flex;
   align-items: center;
@@ -871,4 +881,105 @@ body {
 .confirm-bar > span {
   flex: 1;
   min-width: 200px;
+}
+
+/* ---------- sheet tabs ---------- */
+.sheet-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 0 12px;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+  min-height: 34px;
+}
+
+.sheet-tabs__list {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  min-width: 0;
+}
+
+.sheet-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color 0.12s, background 0.12s, border-color 0.12s;
+  user-select: none;
+}
+
+.sheet-tab:hover {
+  color: var(--text);
+  background: var(--bg);
+}
+
+.sheet-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.sheet-tab--active {
+  color: var(--accent);
+  font-weight: 600;
+  border-bottom-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.sheet-tab__input {
+  width: 14ch;
+  font: inherit;
+  padding: 2px 4px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+}
+
+.sheet-tab__close,
+.sheet-tabs__add {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 16px;
+  line-height: 1;
+  transition: color 0.12s, background 0.12s;
+}
+
+.sheet-tab__close {
+  padding: 0 4px;
+}
+
+.sheet-tab__close:hover {
+  color: var(--danger);
+  background: var(--panel);
+}
+
+.sheet-tabs__add {
+  padding: 0 10px;
+  font-size: 18px;
+}
+
+.sheet-tabs__add:hover:not(:disabled) {
+  color: var(--accent);
+  background: var(--bg);
+}
+
+/* The main menu opens from the left edge of the top bar. */
+.menu--left {
+  left: 0;
+  right: auto;
+  min-width: 220px;
+}
+
+.menu__sep {
+  margin: 4px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
 }

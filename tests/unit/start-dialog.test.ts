@@ -54,11 +54,11 @@ describe('main menu / start dialog (task 14)', () => {
   it('☰ Menu opens it from the editor; Esc or "Back" returns to the mockup unchanged', () => {
     const { store, dialog, btn } = setup()
     const before = store.get()
-    btn('☰ Menu')!.click()
+    btn('☰ Menu')!.click(); btn('New mockup…')!.click()
     expect(dialog()).not.toBeNull()
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
     expect(dialog()).toBeNull()
-    btn('☰ Menu')!.click()
+    btn('☰ Menu')!.click(); btn('New mockup…')!.click()
     btn('Back to current mockup')!.click()
     expect(store.get()).toBe(before)
   })
@@ -67,7 +67,7 @@ describe('main menu / start dialog (task 14)', () => {
     const { root, store, dialog, btn } = setup()
     store.dispatch({ type: 'setZoneColor', zone: 'leg', color: { hex: '#862633' } })
     const before = store.get()
-    btn('☰ Menu')!.click()
+    btn('☰ Menu')!.click(); btn('New mockup…')!.click()
     root.querySelector<HTMLButtonElement>('.start__card[data-style="crew"]')!.click()
     expect(root.querySelector<HTMLElement>('.start__confirm')!.hidden).toBe(false)
     btn('Cancel')!.click()
@@ -81,7 +81,7 @@ describe('main menu / start dialog (task 14)', () => {
   it('editor shortcuts do nothing behind the open menu', () => {
     const { store, btn } = setup()
     store.dispatch({ type: 'setStripes', stripes: 2 })
-    btn('☰ Menu')!.click()
+    btn('☰ Menu')!.click(); btn('New mockup…')!.click()
     document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }))
     expect(store.get().stripes).toBe(2)
   })
@@ -92,7 +92,7 @@ describe('opening a mockup file', () => {
     const m = STYLE_PRESETS['crew-grip'].make()
     m.header.client = 'Nutrio'
     const r = await readMockupFile(jsonFile(m))
-    expect(r).toEqual({ ok: true, mockup: m })
+    expect(r).toEqual({ ok: true, workbook: { sheets: [{ name: 'SAMPLE 1', mockup: m }], active: 0 } })
   })
 
   it('bad files give the app-flow message and never throw', async () => {

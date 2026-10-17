@@ -4,6 +4,12 @@
 import { expect, type Download, type Page, test } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+
+/** File and sheet commands live in the ☰ Menu. */
+async function menu(page: Page, item: string) {
+  await page.click('.topbar__menu')
+  await page.click(`.menu__item:text-is("${item}")`)
+}
 import { fileURLToPath } from 'node:url'
 
 // The package is an ES module, so there's no __dirname.
@@ -61,7 +67,7 @@ async function buildA1(page: Page): Promise<string> {
   await page.keyboard.type('Crew - Half terry footbed')
   await page.keyboard.press('Enter')
   await page.click('.stage', { position: { x: 5, y: 5 } })
-  const [saved] = await Promise.all([page.waitForEvent('download'), page.click('button:text-is("Save")')])
+  const [saved] = await Promise.all([page.waitForEvent('download'), menu(page, 'Save file')])
   expect(saved.suggestedFilename()).toBe('acme-university-crew-sample1.sockmockup.json')
   return (await saved.path())!
 }
@@ -110,20 +116,33 @@ test('A2: reopen a saved mockup, change the heel, move the logo, re-export', asy
   expect(errors).toEqual([])
 })
 
-test('A3: SAMPLE 1 -> SAMPLE 2 with a different base colour', async ({ page }) => {
+test('A3: SAMPLE 1 -> SAMPLE 2 in a new tab, renamed, both in one file and one PDF', async ({ page }) => {
   const errors = watchErrors(page)
   await buildA1(page)
-  const [first] = await Promise.all([page.waitForEvent('download'), page.click('text=Dup → next')])
-  expect(JSON.parse((await bytesOf(first)).toString()).header.tag).toEqual({ mode: 'sample', n: 1 })
+  await menu(page, 'Duplicate to new sheet')
   await expect(page.locator('.sheet [data-field="tag:n"]')).toHaveText('SAMPLE 2')
   await colour(page, 0, 'leg', '#1f2a44')
+  // Rename SAMPLE 2's tab by double-clicking it.
+  await page.dblclick('.sheet-tab--active .sheet-tab__name')
+  await page.fill('.sheet-tab__input', 'Navy version')
+  await page.press('.sheet-tab__input', 'Enter')
+  await expect(page.locator('.sheet-tab')).toHaveText(['SAMPLE 1', 'Navy version×'])
   const png = await exportAs(page, 'Download PNG')
   expect(png.suggestedFilename()).toBe('acme-university-crew-sample2.png')
-  // SAMPLE 1's file is safe, and so is SAMPLE 1 itself: Dup can be undone.
-  await page.click('.stage', { position: { x: 5, y: 5 } })
-  await page.keyboard.press('Control+z')
-  await page.keyboard.press('Control+z')
+  // SAMPLE 1 is untouched in its own tab.
+  await page.click('.sheet-tab >> nth=0')
   await expect(page.locator('.sheet [data-field="tag:n"]')).toHaveText('SAMPLE 1')
+  await expect(page.locator('.sheet [data-view="0"] [data-zone="leg"]')).toHaveAttribute('fill', '#862633')
+  // One file holds both tabs; one PDF has a page per tab.
+  const [saved] = await Promise.all([page.waitForEvent('download'), menu(page, 'Save file')])
+  const book = JSON.parse((await bytesOf(saved)).toString())
+  expect(book.sheets.map((s: { name: string }) => s.name)).toEqual(['SAMPLE 1', 'Navy version'])
+  const pdf = (await bytesOf(await exportAs(page, 'Download PDF'))).toString('latin1')
+  expect(pdf).toMatch(/\/Type \/Pages[\s\S]*?\/Count 2\b/)
+  // Reopening the file brings both tabs back.
+  await menu(page, 'Open file…')
+  await page.setInputFiles('input[type=file][accept^=".json"]', (await saved.path())!)
+  await expect(page.locator('.sheet-tab')).toHaveText(['SAMPLE 1×', 'Navy version'])
   expect(errors).toEqual([])
 })
 
@@ -153,7 +172,7 @@ test('bad uploads and bad files fail with a clear message, never a broken sheet'
   await page.setInputFiles('input[type=file][accept^="image"]', { name: 'logo.png', mimeType: 'image/png', buffer: Buffer.from('MZ\x90\x00\x03\x00\x00\x00', 'latin1') })
   await expect(page.locator('.toast--error')).toHaveText('Only PNG, JPG or SVG logos.')
   // A damaged mockup file.
-  await page.click('button:text-is("Open")')
+  await menu(page, 'Open file…')
   await page.setInputFiles('input[type=file][accept^=".json"]', { name: 'x.sockmockup.json', mimeType: 'application/json', buffer: Buffer.from('{"version":1,"nope":true}') })
   await expect(page.locator('.toast--error').last()).toHaveText("This file isn't a Sock Mockup Studio file (or it's damaged).")
   expect(await sheet()).toBe(sheetBefore)

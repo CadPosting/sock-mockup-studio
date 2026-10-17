@@ -3,14 +3,17 @@
 // Hover/selection highlights are CSS classes on the rendered nodes, styled by the page's CSS,
 // so they can never end up in an export (B1.4).
 
-import { newId } from '../model/defaults'
+import { newId, STYLE_PRESETS } from '../model/defaults'
 import type { Mockup, Placement, ZoneId } from '../model/types'
 import { copyPng, downloadBlob, exportFileName, exportPng } from '../io/export-png'
-import { isMockupFile, nextSample, saveMockupFile } from '../io/file'
+import { isMockupFile, nextSample, saveWorkbookFile } from '../io/file'
 import { checkLogoFile } from '../io/upload'
 import { readImage } from '../util/palette'
 import { render } from '../render/sheet'
 import type { Store } from '../store/store'
+import { createWorkbook } from '../store/workbook'
+import { defaultSheetName, type WorkbookData } from '../model/workbook'
+import { createSheetTabs } from './sheet-tabs'
 import { h } from './dom'
 import { viewCentre } from './geometry'
 import { startInlineEdit } from './inline-edit'
@@ -49,6 +52,30 @@ function parseSelectKey(key: string): Selection {
   return null
 }
 
+/**
+ * A fresh mockup in the same sock style as `m` (the preset with the same sock and views, and
+ * the same style code if it has one), keeping the client name and header logo.
+ */
+export function blankLike(m: Mockup): Mockup {
+  const kinds = (x: Mockup) => x.views.map((v) => v.kind).join()
+  const score = (p: Mockup) =>
+    (p.template === m.template ? 4 : 0) +
+    (kinds(p) === kinds(m) ? 2 : 0) +
+    (p.header.tag.mode === m.header.tag.mode ? 1 : 0) +
+    (Boolean(p.patterns.gripDots) === Boolean(m.patterns.gripDots) ? 1 : 0)
+  const fresh = Object.values(STYLE_PRESETS)
+    .map((p) => p.make())
+    .reduce((best, p) => (score(p) > score(best) ? p : best))
+  fresh.header.client = m.header.client
+  const logoId = m.header.logoAssetId
+  if (logoId && m.assets[logoId]) {
+    fresh.assets[logoId] = m.assets[logoId]
+    fresh.header.logoAssetId = logoId
+  }
+  if (m.header.tag.mode === 'code' && fresh.header.tag.mode === 'code') fresh.header.tag = { ...m.header.tag }
+  return fresh
+}
+
 let unmountPrevious: (() => void) | null = null
 
 export function mountEditor(root: HTMLElement, store: Store) {
@@ -59,6 +86,7 @@ export function mountEditor(root: HTMLElement, store: Store) {
   const listen = { signal: lifetime.signal }
   unmountPrevious = () => lifetime.abort()
   const selection = createSelection()
+  const workbook = createWorkbook(store, defaultSheetName(store.get(), 0))
 
   const undo = button('↶ Undo', { title: 'Undo (Ctrl+Z)' })
   const redo = button('↷ Redo', { title: 'Redo (Ctrl+Shift+Z)' })
@@ -66,8 +94,36 @@ export function mountEditor(root: HTMLElement, store: Store) {
   redo.addEventListener('click', () => store.redo())
 
   // Main menu: new from a sock style, open a file, resume the draft (task 14).
-  const menuBtn = button('☰ Menu', { title: 'Main menu: new mockup from a sock style, or open a file' })
+  // Main menu ▾: file and sheet commands in one place (the tab bar and top bar are shortcuts).
+  const menuBtn = button('☰ Menu', { title: 'New, open, save; add, rename or delete sheets' })
   menuBtn.classList.add('topbar__menu')
+  menuBtn.setAttribute('aria-haspopup', 'menu')
+  menuBtn.setAttribute('aria-expanded', 'false')
+  const menuItem = (label: string, title?: string) => h('button', { type: 'button', class: 'menu__item', role: 'menuitem', title }, label)
+  const newItem = menuItem('New mockup…', 'Start from a sock style (replaces this file)')
+  const openItem = menuItem('Open file…', 'Open a .sockmockup.json file')
+  const saveItem = menuItem('Save file', 'Save every sheet in one file (Ctrl+S)')
+  const addSheetItem = menuItem('Add sheet', 'A fresh sheet in this sock style, with the same client and logo')
+  const dupSheetItem = menuItem('Duplicate to new sheet', 'A copy of this sheet as the next SAMPLE, in a new tab')
+  const renameSheetItem = menuItem('Rename sheet', 'Rename this sheet’s tab (or double-click the tab)')
+  const deleteSheetItem = menuItem('Delete sheet', 'Delete this sheet')
+  const mainList = h(
+    'div',
+    { class: 'menu menu--left', role: 'menu', hidden: true },
+    newItem,
+    openItem,
+    saveItem,
+    h('hr', { class: 'menu__sep' }),
+    addSheetItem,
+    dupSheetItem,
+    renameSheetItem,
+    deleteSheetItem,
+  )
+  const mainMenu = h('div', { class: 'menu-wrap' }, menuBtn, mainList)
+  const setMainOpen = (open: boolean) => {
+    mainList.hidden = !open
+    menuBtn.setAttribute('aria-expanded', String(open))
+  }
 
   const layersToggle = button('Layers', { title: 'Show or hide the Layers panel' })
   layersToggle.classList.add('topbar__layers-toggle')
@@ -84,9 +140,6 @@ export function mountEditor(root: HTMLElement, store: Store) {
     selection.set({ kind: 'motif' })
   })
 
-  const openBtn = button('Open', { title: 'Open a .sockmockup.json file (or drop one on the window)' })
-  const saveBtn = button('Save', { title: 'Save as a .sockmockup.json file (Ctrl+S)' })
-  const dupBtn = button('Dup → next', { title: 'Save this file, then start the next SAMPLE with everything copied' })
 
   const addLogoBtn = button('+ Logo', { title: 'Put the client logo on the sock' })
   const addTextBtn = button('+ Text', { title: 'Add a text wordmark to the sock' })
@@ -115,7 +168,7 @@ export function mountEditor(root: HTMLElement, store: Store) {
   const topbar = h(
     'header',
     { class: 'topbar' },
-    group(menuBtn, layersToggle, openBtn, saveBtn, dupBtn),
+    group(mainMenu, layersToggle),
     group(undo, redo),
     group(addLogoBtn, addTextBtn, dots, motifBtn),
     h('div', { class: 'topbar__spacer' }),
@@ -132,6 +185,14 @@ export function mountEditor(root: HTMLElement, store: Store) {
   const overlay = createOverlay(store, selection, lifetime.signal)
   sheet.append(svgHolder, overlay.svg, dropBox)
   const stage = h('main', { class: 'stage' }, sheet)
+  const tabs = createSheetTabs(workbook, {
+    beforeSwitch: () => {
+      endInteractions()
+      selection.set(null)
+    },
+    duplicate: () => duplicateSheet(),
+    confirm: (text, yesLabel, go) => askToReplace(text, go, yesLabel),
+  })
   // Logo upload: one hidden file input shared by the Upload button and the drop box.
   const fileInput = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/svg+xml', hidden: true })
   const pickLogo = () => fileInput.click()
@@ -142,7 +203,7 @@ export function mountEditor(root: HTMLElement, store: Store) {
   const right = h('aside', { class: 'panel panel--inspector', 'aria-label': 'Inspector' }, inspector.root)
   const small = h('div', { class: 'too-small' }, 'The editor needs a screen at least 1024 px wide. Exported mockups can be viewed on any device.')
 
-  const app = h('div', { class: 'editor' }, topbar, banner, h('div', { class: 'workspace' }, layers, stage, right))
+  const app = h('div', { class: 'editor' }, topbar, banner, h('div', { class: 'workspace' }, layers, h('div', { class: 'stage-col' }, stage, tabs.root), right))
   const toast = createToasts(app)
   root.replaceChildren(app, small, fileInput)
 
@@ -211,24 +272,29 @@ export function mountEditor(root: HTMLElement, store: Store) {
   // ---------- files (task 17) ----------
   // Unsaved = there's work, and it isn't the state last saved to (or opened from) a file. Undoing
   // back to that state counts as saved again, since the store reuses the same object.
-  let lastSaved: Mockup | null = null
-  // Once there's a saved file, compare against it; before that, anything beyond an untouched style.
-  const isUnsaved = () => (lastSaved ? store.get() !== lastSaved : hasWork(store.get()))
+  // Once there's a saved file, compare against it; before that, anything beyond one untouched style.
+  let lastSavedSig: unknown[] | null = null
+  const isUnsaved = () => {
+    const sig = workbook.signature()
+    if (lastSavedSig) return sig.length !== lastSavedSig.length || sig.some((x, i) => x !== lastSavedSig![i])
+    const { sheets } = workbook.data()
+    return sheets.length > 1 || sheets.some((sh, i) => hasWork(sh.mockup) || sh.name !== defaultSheetName(sh.mockup, i))
+  }
 
   /** Finish a text edit / stop a drag before the document is replaced, so neither can write into it. */
   const endInteractions = () => {
     sheet.querySelector<HTMLInputElement>('.inline-edit')?.blur()
     overlay.cancelDrag()
   }
-  const markSaved = () => (lastSaved = store.get())
+  const markSaved = () => (lastSavedSig = workbook.signature())
 
   const openInput = h('input', { type: 'file', accept: '.json,.sockmockup.json,application/json', hidden: true })
   // Inline confirmation bar for Open over unsaved work (no browser popups, design brief).
   const confirmBar = h('div', { class: 'confirm-bar', role: 'alertdialog', hidden: true })
   app.insertBefore(confirmBar, banner)
   root.append(openInput)
-  function askToReplace(text: string, go: () => void) {
-    const yes = h('button', { type: 'button', class: 'btn btn--primary' }, 'Open it')
+  function askToReplace(text: string, go: () => void, yesLabel = 'Open it') {
+    const yes = h('button', { type: 'button', class: 'btn btn--primary' }, yesLabel)
     const no = h('button', { type: 'button', class: 'btn btn--outline' }, 'Cancel')
     yes.addEventListener('click', () => {
       confirmBar.hidden = true
@@ -241,7 +307,7 @@ export function mountEditor(root: HTMLElement, store: Store) {
   }
 
   function saveNow(): string {
-    const name = saveMockupFile(store.get())
+    const name = saveWorkbookFile(workbook.data())
     markSaved()
     toast(`Saved ${name}`)
     return name
@@ -253,7 +319,7 @@ export function mountEditor(root: HTMLElement, store: Store) {
     const go = () => {
       endInteractions()
       selection.set(null)
-      store.load(r.mockup)
+      workbook.load(r.workbook)
       markSaved()
       toast(`Opened ${file.name}`)
     }
@@ -261,25 +327,33 @@ export function mountEditor(root: HTMLElement, store: Store) {
     else go()
   }
 
-  openBtn.addEventListener('click', () => openInput.click())
   openInput.addEventListener('change', () => {
     const f = openInput.files?.[0]
     openInput.value = ''
     if (f) void openFile(f)
   })
-  saveBtn.addEventListener('click', () => void saveNow())
-  dupBtn.addEventListener('click', () => {
-    // App-flow Journey 3: the current file is saved first, then SAMPLE n+1 starts.
+  // App-flow Journey 3, with tabs: SAMPLE n+1 is a copy of this sheet in a new tab, and the
+  // previous sample stays in its own tab, so nothing is lost and no download is needed.
+  /** A fresh sheet in the open sheet's sock style; the client name and logo carry over. */
+  function addBlankSheet() {
     endInteractions()
-    saveNow()
+    if (!workbook.canAdd()) return toast('That is the most sheets one file can hold.', 'error')
+    const cur = store.get()
+    const m = blankLike(cur)
+    selection.set(null)
+    const name = `Sheet ${workbook.list().length + 1}`
+    workbook.add({ name, mockup: m })
+    toast(`Added ${name}.`)
+  }
+  function duplicateSheet() {
+    endInteractions()
+    if (!workbook.canAdd()) return toast('That is the most sheets one file can hold.', 'error')
     const next = nextSample(store.get())
     selection.set(null)
-    // An undo step, not a fresh history: the browser can't confirm the download finished, so if
-    // it was blocked, Ctrl+Z brings the previous sample back.
-    store.dispatch({ type: 'replaceAll', mockup: next })
-    const tag = next.header.tag
-    toast(tag.mode === 'sample' ? `Saved. Now on SAMPLE ${tag.n} (Ctrl+Z to go back).` : 'Saved. Started a copy (style-code tag kept).')
-  })
+    const name = next.header.tag.mode === 'sample' ? `SAMPLE ${next.header.tag.n}` : `${workbook.list().find((t) => t.active)!.name} copy`
+    workbook.add({ name, mockup: next })
+    toast(`Added ${name}. The previous sheet is still in its tab.`)
+  }
 
   // Drop a .sockmockup.json anywhere on the window to open it (logos go on the logo box).
   window.addEventListener('dragover', (e) => {
@@ -306,6 +380,7 @@ export function mountEditor(root: HTMLElement, store: Store) {
     selection.set(null)
     openStartDialog(app, {
       store,
+      load: (wb: WorkbookData) => workbook.load(wb),
       canClose: opts.canClose ?? true,
       draft: opts.draft,
       onDone: (message) => {
@@ -315,11 +390,38 @@ export function mountEditor(root: HTMLElement, store: Store) {
       onError: (message) => toast(message, 'error'),
       isUnsaved,
       onOpened: markSaved,
-      onNew: () => (lastSaved = null),
+      onNew: () => (lastSavedSig = null),
       signal: lifetime.signal,
     })
   }
-  menuBtn.addEventListener('click', () => openMenu())
+  menuBtn.addEventListener('click', () => {
+    if (mainList.hidden) {
+      // Delete only makes sense with more than one sheet.
+      deleteSheetItem.disabled = workbook.list().length === 1
+      addSheetItem.disabled = dupSheetItem.disabled = !workbook.canAdd()
+    }
+    setMainOpen(mainList.hidden)
+  })
+  document.addEventListener('click', (e) => {
+    if (!mainMenu.contains(e.target as Node)) setMainOpen(false)
+  }, listen)
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !mainList.hidden) {
+      setMainOpen(false)
+      menuBtn.focus()
+    }
+  }, listen)
+  const fromMenu = (fn: () => void) => () => {
+    setMainOpen(false)
+    fn()
+  }
+  newItem.addEventListener('click', fromMenu(() => openMenu()))
+  openItem.addEventListener('click', fromMenu(() => openInput.click()))
+  saveItem.addEventListener('click', fromMenu(() => void saveNow()))
+  addSheetItem.addEventListener('click', fromMenu(() => addBlankSheet()))
+  dupSheetItem.addEventListener('click', fromMenu(() => duplicateSheet()))
+  renameSheetItem.addEventListener('click', fromMenu(() => tabs.renameActive()))
+  deleteSheetItem.addEventListener('click', fromMenu(() => tabs.deleteActive()))
 
   // ---------- export (task 15) ----------
   let exporting = false
@@ -337,8 +439,10 @@ export function mountEditor(root: HTMLElement, store: Store) {
         // Loaded on first use only: jsPDF + svg2pdf are most of the bundle (TDD §9).
         const { exportPdf } = await import('../io/export-pdf')
         const pdfName = exportFileName(m, 'pdf')
-        downloadBlob(await exportPdf(m), pdfName)
-        toast(`Exported ${pdfName}`)
+        // One page per sheet tab, in tab order: the factory gets every sample in one file.
+        const all = workbook.data().sheets.map((sh) => sh.mockup)
+        downloadBlob(await exportPdf(all), pdfName)
+        toast(all.length > 1 ? `Exported ${pdfName} (${all.length} pages)` : `Exported ${pdfName}`)
       } else if (kind === 'copy') {
         const png = exportPng(m)
         if (await copyPng(png)) toast('Copied. Paste it into your email.')
@@ -505,7 +609,7 @@ export function mountEditor(root: HTMLElement, store: Store) {
     undo.disabled = !store.canUndo()
     redo.disabled = !store.canRedo()
   }
-  const unsubscribe = [store.subscribe(update), selection.subscribe(update)]
+  const unsubscribe = [store.subscribe(update), selection.subscribe(update), workbook.subscribe(tabs.draw)]
   lifetime.signal.addEventListener('abort', () => unsubscribe.forEach((u) => u()))
   update()
 
@@ -566,6 +670,7 @@ export function mountEditor(root: HTMLElement, store: Store) {
   }, listen)
 
   return {
+    workbook,
     setAutosaveOk(ok: boolean) {
       banner.hidden = ok
     },

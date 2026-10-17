@@ -6,6 +6,7 @@ import { type Action, apply } from './actions'
 const HISTORY_LIMIT = 200
 
 export type Store = ReturnType<typeof createStore>
+export type StoreSnapshot = { state: Mockup; past: Mockup[]; future: Mockup[] }
 
 export function createStore(initial: Mockup) {
   let state = initial
@@ -79,6 +80,19 @@ export function createStore(initial: Mockup) {
 
     canUndo: () => past.length > 0,
     canRedo: () => future.length > 0,
+
+    /** The sheet with its undo history, so switching sheet tabs can put it back exactly. */
+    snapshot(): StoreSnapshot {
+      return { state, past: [...past], future: [...future] }
+    },
+
+    restore(snap: StoreSnapshot) {
+      state = snap.state
+      past = [...snap.past]
+      future = [...snap.future]
+      gestureStart = null
+      emit()
+    },
 
     /** Replace the whole mockup (open file, resume draft, new). Starts a fresh history. */
     load(m: Mockup) {

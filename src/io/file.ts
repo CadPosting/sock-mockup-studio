@@ -2,6 +2,7 @@
 // record (TDD §7): they're what gets shared, archived and reopened for revisions.
 
 import type { Mockup } from '../model/types'
+import { serializeWorkbook, type WorkbookData } from '../model/workbook'
 import { downloadBlob, exportFileName } from './export-png'
 
 export const FILE_EXT = 'sockmockup.json'
@@ -11,9 +12,10 @@ export function serializeMockup(m: Mockup): string {
   return JSON.stringify(m)
 }
 
-export function saveMockupFile(m: Mockup): string {
-  const name = exportFileName(m, FILE_EXT)
-  downloadBlob(new Blob([serializeMockup(m)], { type: 'application/json' }), name)
+/** Save every sheet tab in one file, named after the open sheet. */
+export function saveWorkbookFile(wb: WorkbookData): string {
+  const name = exportFileName(wb.sheets[wb.active].mockup, FILE_EXT)
+  downloadBlob(new Blob([serializeWorkbook(wb)], { type: 'application/json' }), name)
   return name
 }
 

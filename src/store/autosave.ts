@@ -2,16 +2,14 @@
 // so tests use an in-memory fake and the app uses idb-keyval (localStorage caps out around
 // 5 MB, and one embedded logo can blow that).
 
-import { cleanSvgAssets } from '../io/clean'
-import { migrate } from '../model/schema'
-import type { Mockup } from '../model/types'
+import { readWorkbook, workbookRecord, type WorkbookData } from '../model/workbook'
 
 export type DraftStorage = {
   get(key: string): Promise<unknown>
   set(key: string, value: unknown): Promise<void>
 }
 
-export type Draft = { mockup: Mockup; savedAt: number }
+export type Draft = { workbook: WorkbookData; savedAt: number }
 
 const KEY = 'draft'
 export const AUTOSAVE_DELAY_MS = 1000
@@ -23,13 +21,13 @@ export const AUTOSAVE_DELAY_MS = 1000
  */
 export function createAutosave(storage: DraftStorage, onStatus: (ok: boolean) => void, now = () => Date.now()) {
   let timer: ReturnType<typeof setTimeout> | undefined
-  let latest: Mockup | undefined
+  let latest: WorkbookData | undefined
 
   const flush = async () => {
     timer = undefined
     if (!latest) return
     try {
-      await storage.set(KEY, { mockup: latest, savedAt: now() } satisfies Draft)
+      await storage.set(KEY, { workbook: workbookRecord(latest), savedAt: now() })
       onStatus(true)
     } catch {
       onStatus(false) // the tool keeps working; the user can still Save to a file
@@ -37,8 +35,8 @@ export function createAutosave(storage: DraftStorage, onStatus: (ok: boolean) =>
   }
 
   return {
-    schedule(m: Mockup) {
-      latest = m
+    schedule(wb: WorkbookData) {
+      latest = wb
       if (timer) clearTimeout(timer)
       timer = setTimeout(flush, AUTOSAVE_DELAY_MS)
     },
@@ -60,14 +58,15 @@ export async function loadDraft(
     // A blocked or stuck IndexedDB must never stop the editor from opening: give up after a
     // moment and start fresh (the draft is still there for next time).
     const timeout = new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), timeoutMs))
-    const raw = (await Promise.race([storage.get(KEY), timeout])) as { mockup?: unknown; savedAt?: unknown } | undefined
+    const raw = (await Promise.race([storage.get(KEY), timeout])) as { workbook?: unknown; mockup?: unknown; savedAt?: unknown } | undefined
     if (!raw) return null
     if (typeof raw.savedAt !== 'number') {
       onDamaged()
       return null
     }
-    // Same pipeline as opening a file: validate, then clean any SVG logos.
-    return { mockup: cleanSvgAssets(migrate(raw.mockup)), savedAt: raw.savedAt }
+    // Same pipeline as opening a file: validate, then clean any SVG logos. Drafts from before
+    // sheet tabs hold a single mockup; readWorkbook turns that into one sheet.
+    return { workbook: readWorkbook(raw.workbook ?? raw.mockup), savedAt: raw.savedAt }
   } catch {
     // A draft was there but didn't validate: tell the user rather than silently starting blank.
     onDamaged()

@@ -19,12 +19,16 @@ async function boot() {
   if (loaded) useArimoMetrics() // decided once, before the first render; never switches later
   let damaged = false
   const draft = await loadDraft(idbStorage, undefined, () => (damaged = true))
-  const store = createStore(draft?.mockup ?? STYLE_PRESETS.crew.make())
+  const first = draft?.workbook.sheets[draft.workbook.active].mockup ?? STYLE_PRESETS.crew.make()
+  const store = createStore(first)
   const editor = mountEditor(document.querySelector<HTMLDivElement>('#app')!, store)
-  editor.openMenu({ canClose: false, draft: draft ? { client: draft.mockup.header.client, savedAt: draft.savedAt } : undefined })
+  if (draft) editor.workbook.load(draft.workbook) // every sheet tab, as it was
+  editor.openMenu({ canClose: false, draft: draft ? { client: first.header.client, savedAt: draft.savedAt } : undefined })
   if (damaged) editor.toast("Your last draft couldn't be restored, so this is a fresh mockup. Saved files are not affected.", 'error')
   const autosave = createAutosave(idbStorage, editor.setAutosaveOk)
-  store.subscribe(autosave.schedule)
+  const schedule = () => autosave.schedule(editor.workbook.data())
+  store.subscribe(schedule)
+  editor.workbook.subscribe(schedule) // renaming, adding or deleting a tab
   // Save straight away when the tab is hidden or closed, so the last second of edits isn't lost.
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') void autosave.flush()

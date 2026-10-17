@@ -3,9 +3,9 @@
 // works the same in every browser (no <dialog> quirks) and needs no confirm() popups.
 
 import { STYLE_PRESETS, type StylePresetId } from '../model/defaults'
-import { cleanSvgAssets } from '../io/clean'
-import { migrate, MockupFileError } from '../model/schema'
+import { MockupFileError } from '../model/schema'
 import type { Mockup } from '../model/types'
+import { defaultSheetName, readWorkbook, type WorkbookData } from '../model/workbook'
 import { render } from '../render/sheet'
 import type { Store } from '../store/store'
 import { h } from './dom'
@@ -17,11 +17,11 @@ export const OPEN_ERRORS = {
 const MAX_FILE_BYTES = 60 * 1024 * 1024 // a mockup with several 10 MB logos, base64-encoded
 
 /** Browser check that every embedded image actually decodes (the schema only checks its header). */
-async function imagesDecode(m: Mockup): Promise<boolean> {
+async function imagesDecode(wb: WorkbookData): Promise<boolean> {
   if (typeof Image === 'undefined' || !('decode' in Image.prototype)) return true
   try {
     await Promise.all(
-      Object.values(m.assets).map((a) => {
+      wb.sheets.flatMap((s) => Object.values(s.mockup.assets)).map((a) => {
         const img = new Image()
         img.src = a.dataUrl
         return img.decode()
@@ -33,17 +33,17 @@ async function imagesDecode(m: Mockup): Promise<boolean> {
   }
 }
 
-/** Read and validate a mockup file. Never throws: returns the mockup or the message to show. */
+/** Read and validate a mockup file (one sheet or several). Never throws: returns it or the message to show. */
 export async function readMockupFile(
   file: File,
-  verifyImages: (m: Mockup) => Promise<boolean> = imagesDecode,
-): Promise<{ ok: true; mockup: Mockup } | { ok: false; message: string }> {
+  verifyImages: (wb: WorkbookData) => Promise<boolean> = imagesDecode,
+): Promise<{ ok: true; workbook: WorkbookData } | { ok: false; message: string }> {
   if (file.size > MAX_FILE_BYTES) return { ok: false, message: OPEN_ERRORS.tooBig }
   try {
-    const mockup = cleanSvgAssets(migrate(JSON.parse(await file.text())))
+    const workbook = readWorkbook(JSON.parse(await file.text()))
     // A file whose logo bytes are broken would open with a missing logo; refuse it whole instead.
-    if (!(await verifyImages(mockup))) return { ok: false, message: OPEN_ERRORS.damaged }
-    return { ok: true, mockup }
+    if (!(await verifyImages(workbook))) return { ok: false, message: OPEN_ERRORS.damaged }
+    return { ok: true, workbook }
   } catch (e) {
     return { ok: false, message: e instanceof MockupFileError ? e.message : OPEN_ERRORS.damaged }
   }
@@ -74,6 +74,8 @@ export function hasWork(m: Mockup): boolean {
 
 export type StartDialogOptions = {
   store: Store
+  /** Replace every sheet with these (a new mockup is a workbook with one sheet). */
+  load: (wb: WorkbookData) => void
   /** Show "Back to current mockup" and allow Esc (false on first open of a fresh browser). */
   canClose: boolean
   /** Offered on boot when an autosaved draft exists. */
@@ -117,19 +119,19 @@ export function openStartDialog(parent: HTMLElement, o: StartDialogOptions): HTM
     confirmBar.hidden = false
     yes.focus()
   }
-  const replaceWith = (m: Mockup, message: string, opened: boolean) => {
-    o.store.load(m)
+  const replaceWith = (wb: WorkbookData, message: string, opened: boolean) => {
+    o.load(wb)
     if (opened) o.onOpened?.()
     else o.onNew?.()
     close(message)
   }
   const unsaved = o.isUnsaved ?? (() => hasWork(o.store.get()))
-  const guarded = (m: Mockup, message: string, opened = false) => {
+  const guarded = (wb: WorkbookData, message: string, opened = false) => {
     // Ask whenever there's unsaved work to lose, including a draft restored at boot.
     if (unsaved()) {
       const client = o.store.get().header.client || 'the current mockup'
-      ask(`This replaces ${client}. It isn't saved to a file yet.`, () => replaceWith(m, message, opened))
-    } else replaceWith(m, message, opened)
+      ask(`This replaces ${client}. It isn't saved to a file yet.`, () => replaceWith(wb, message, opened))
+    } else replaceWith(wb, message, opened)
   }
 
   const cards = h('div', { class: 'start__cards' })
@@ -137,7 +139,10 @@ export function openStartDialog(parent: HTMLElement, o: StartDialogOptions): HTM
     const thumb = h('div', { class: 'start__thumb', 'aria-hidden': 'true' })
     thumb.append(render(preset.make())) // the real render, so the picture always matches the style
     const card = h('button', { type: 'button', class: 'start__card', 'data-style': id }, thumb, h('span', { class: 'start__card-name' }, preset.name))
-    card.addEventListener('click', () => guarded(preset.make(), `New ${preset.name} mockup.`))
+    card.addEventListener('click', () => {
+      const m = preset.make()
+      guarded({ sheets: [{ name: defaultSheetName(m, 0), mockup: m }], active: 0 }, `New ${preset.name} mockup.`)
+    })
     cards.append(card)
   }
 
@@ -151,7 +156,7 @@ export function openStartDialog(parent: HTMLElement, o: StartDialogOptions): HTM
     const r = await readMockupFile(f)
     if (!open) return // the menu was closed while reading: do nothing
     if (!r.ok) return o.onError(r.message) // the current mockup stays untouched
-    guarded(r.mockup, `Opened ${f.name}.`, true)
+    guarded(r.workbook, `Opened ${f.name}.`, true)
   })
 
   const actions = h('div', { class: 'start__actions' }, openBtn, fileInput)

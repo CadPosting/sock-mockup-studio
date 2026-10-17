@@ -166,9 +166,10 @@ describe('autosave', () => {
     const status = vi.fn()
     const auto = createAutosave(storage, status, () => 1234)
     const m = start()
-    auto.schedule(m)
+    const book = (x: typeof m) => ({ sheets: [{ name: 'SAMPLE 1', mockup: x }], active: 0 })
+    auto.schedule(book(m))
     await vi.advanceTimersByTimeAsync(500)
-    auto.schedule({ ...m, stripes: 2 }) // resets the timer
+    auto.schedule(book({ ...m, stripes: 2 })) // resets the timer
     await vi.advanceTimersByTimeAsync(900)
     expect(storage.data.size).toBe(0)
     await vi.advanceTimersByTimeAsync(200)
@@ -176,7 +177,7 @@ describe('autosave', () => {
     vi.useRealTimers()
     // "Reload": a fresh loader reading the same storage gets the exact mockup back.
     const draft = await loadDraft(storage)
-    expect(draft).toEqual({ mockup: { ...m, stripes: 2 }, savedAt: 1234 })
+    expect(draft).toEqual({ workbook: book({ ...m, stripes: 2 }), savedAt: 1234 })
   })
 
   it('reports a failed save, and recovers on the next good one', async () => {
@@ -187,11 +188,11 @@ describe('autosave', () => {
       { get: async () => undefined, set: async () => { if (fail) throw new Error('QuotaExceededError') } },
       status,
     )
-    auto.schedule(start())
+    auto.schedule({ sheets: [{ name: 'Sheet 1', mockup: start() }], active: 0 })
     await vi.advanceTimersByTimeAsync(1000)
     expect(status).toHaveBeenLastCalledWith(false)
     fail = false
-    auto.schedule(start())
+    auto.schedule({ sheets: [{ name: 'Sheet 1', mockup: start() }], active: 0 })
     await vi.advanceTimersByTimeAsync(1000)
     expect(status).toHaveBeenLastCalledWith(true)
     vi.useRealTimers()
@@ -226,6 +227,6 @@ describe('autosave', () => {
     m.header.logoAssetId = 'e'
     storage.data.set('draft', { mockup: m, savedAt: 1 })
     const draft = await loadDraft(storage, 100)
-    expect(atob(draft!.mockup.assets.e.dataUrl.split(',')[1])).not.toContain('script')
+    expect(atob(draft!.workbook.sheets[0].mockup.assets.e.dataUrl.split(',')[1])).not.toContain('script')
   })
 })
