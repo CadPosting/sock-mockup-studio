@@ -60,7 +60,21 @@ export function renderLayers(m: Mockup, selected: string | null): HTMLElement {
     .filter((p) => p.content.type === 'text')
     .map((p) => row((p.content as { text: string }).text || 'Text', (p.content as { color: { hex: string } }).color.hex, viewName(p.view), `placement:${p.id}`))
 
+  // Zone patterns (argyle, stripes...) also list here: one row per look, naming the zones it covers.
+  // Clicking it selects the first of those zones, whose panel holds the pattern settings.
+  const looks = new Map<string, ZoneId[]>()
+  for (const f of m.zoneFills) {
+    if (!visibleZones(m).includes(f.zone)) continue
+    const key = JSON.stringify(f.pattern)
+    looks.set(key, [...(looks.get(key) ?? []), f.zone])
+  }
+  const zonePatterns = [...looks.entries()].map(([key, zs]) => {
+    const type = (JSON.parse(key) as { type: string }).type
+    return row(type[0].toUpperCase() + type.slice(1), undefined, zs.map((z) => ZONE_NAMES[z]).join(', '), `zone:${zs[0]}`)
+  })
+
   const patterns = [
+    ...zonePatterns,
     m.patterns.gripDots ? row('Grip dots', m.patterns.gripDots.color.hex, undefined, 'gripDots') : null,
     m.patterns.motif ? row('Repeat motif', undefined, undefined, 'motif') : null,
   ].filter((n): n is HTMLLIElement => n !== null)
